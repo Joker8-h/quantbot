@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../api';
 
 interface AlertConfig {
@@ -47,7 +47,7 @@ export default function Alertas() {
   const toggleAlert = async (alertType: string, channel: string) => {
     setSaving(true);
     try {
-      const isActive = !alerts[alertType]?.[channel];
+      const isActive = !alerts[alertType]?.[channel as 'whatsapp' | 'telegram'];
       await api.put('/alerts/toggle', { alert_type: alertType, channel, is_active: isActive });
       setAlerts({
         ...alerts,
