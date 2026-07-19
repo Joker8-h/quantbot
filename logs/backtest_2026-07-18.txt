@@ -7,3 +7,4 @@ Rentabilidad: -14.55%
 Trades: 690
 Win Rate: 38.1%
 Profit Factor: 1.04
+

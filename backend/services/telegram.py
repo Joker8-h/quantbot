@@ -79,3 +79,4 @@ def format_risk_alert(nivel: str, accion: str, razon: str, precio: float = None)
         f"Acción: {accion}{precio_txt}\n"
         f"🤖 {razon}"
     )
+

@@ -32,6 +32,24 @@ from dca_engine import DCAEngine
 from indicators import Indicators
 from data_collector import DataCollector
 
+# Precio en vivo publico de Binance (sin credenciales)
+try:
+    from services.binance import BinanceService
+    _TIENE_BINANCE = True
+except Exception:
+    _TIENE_BINANCE = False
+
+
+def _precio_vivo(symbol: str) -> float:
+    """Intenta precio en vivo de Binance; devuelve None si falla."""
+    if not _TIENE_BINANCE:
+        return None
+    try:
+        p = BinanceService.precio_publico(symbol)
+        return float(p) if p else None
+    except Exception:
+        return None
+
 
 def _cargar_1d(symbol: str = "BTC/USDT"):
     """Carga datos 1D desde CSV local o los descarga."""
@@ -89,7 +107,8 @@ def estado_completo(symbol: str = "BTC/USDT", api_key: str = None,
     d2 = _cargar_1d(symbol)
     if d2.empty:
         return {"error": "sin datos"}
-    precio = float(d2['close'].iloc[-1])
+    vivo = _precio_vivo(symbol)
+    precio = vivo if vivo else float(d2['close'].iloc[-1])
     nivel, razon, features = evaluar_riesgo(d2, api_key)
 
     from datetime import datetime, timedelta
@@ -124,3 +143,4 @@ def estado_completo(symbol: str = "BTC/USDT", api_key: str = None,
 if __name__ == "__main__":
     r = estado_completo(api_key=os.environ.get("OPENAI_API_KEY"))
     print(r)
+

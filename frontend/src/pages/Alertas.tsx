@@ -234,3 +234,4 @@ export default function Alertas() {
     </div>
   );
 }
+

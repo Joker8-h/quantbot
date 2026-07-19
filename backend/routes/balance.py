@@ -175,3 +175,4 @@ def resume_system(user: User = Depends(get_current_user), db: Session = Depends(
         status_obj.is_running = True
         db.commit()
     return {"message": "System resumed", "is_running": True}
+

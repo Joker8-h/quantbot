@@ -9,6 +9,8 @@ python-multipart>=0.06
 httpx>=0.25.0
 openai>=1.0.0
 ccxt>=4.0.0
+cryptography>=42.0.0
 pandas>=2.0.0
 numpy>=1.24.0
+
 

@@ -85,3 +85,4 @@ def modo_actual():
         "modos": MODOS,
         "mensaje": "No intentamos adivinar el mercado. Invertimos con disciplina y reducimos el riesgo de malas decisiones emocionales.",
     }
+

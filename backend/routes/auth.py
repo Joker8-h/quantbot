@@ -87,3 +87,4 @@ def set_currency(currency: str, user: User = Depends(get_current_user), db: Sess
     user.currency_preference = currency
     db.commit()
     return {"message": f"Currency set to {currency}"}
+

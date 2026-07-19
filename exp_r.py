@@ -11,7 +11,7 @@ from metrics import Metrics
 from config import TradingConfig
 from ai_regime import AIRegimeClassifier
 
-API = os.environ.get("OPENAI_API_KEY")
+API=os.environ.get("OPENAI_API_KEY")
 clf = AIRegimeClassifier(api_key=API)
 
 # Cargar BTC 1h -> 1D

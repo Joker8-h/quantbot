@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from database import engine, Base
-from routes import auth, balance, alerts, admin, investment
+from routes import auth, balance, alerts, admin, investment, exchange
 import os
 import logging
 
@@ -29,6 +29,7 @@ app.include_router(balance.router)
 app.include_router(alerts.router)
 app.include_router(admin.router)
 app.include_router(investment.router)
+app.include_router(exchange.router)
 
 
 @app.get("/api/health")
@@ -58,3 +59,4 @@ else:
     @app.get("/")
     def root():
         return {"message": "QuantBot API is running", "version": "1.0.0"}
+

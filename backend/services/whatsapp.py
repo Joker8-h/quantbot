@@ -45,3 +45,4 @@ async def get_whatsapp_status() -> dict:
             return {"status": "error", "ready": False}
     except Exception:
         return {"status": "offline", "ready": False}
+

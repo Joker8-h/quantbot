@@ -111,3 +111,4 @@ class SystemStatus(Base):
     total_pnl_usd = Column(Float, default=0.0)
     today_pnl_usd = Column(Float, default=0.0)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+

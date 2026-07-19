@@ -82,3 +82,4 @@ def list_invitations(admin: User = Depends(require_admin), db: Session = Depends
         }
         for inv in invitations
     ]
+

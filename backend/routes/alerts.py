@@ -121,3 +121,4 @@ async def test_whatsapp(user: User = Depends(get_current_user)):
 @router.get("/whatsapp-status")
 async def whatsapp_status(user: User = Depends(get_current_user)):
     return await get_whatsapp_status()
+
