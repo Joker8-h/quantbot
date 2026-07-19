@@ -6,8 +6,7 @@ from typing import List, Dict, Tuple
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
-from config import CONFIG, TradingConfig
-from data_collector import DataCollector
+from config import TradingConfig
 from indicators import Indicators
 from strategy import Strategy
 from backtester import Backtester
@@ -33,10 +32,9 @@ class WindowResult:
 class WalkForward:
     def __init__(self):
         self.param_grid = {
-            "ema_fast": [15, 20, 25],
-            "ema_slow": [45, 50, 55],
-            "rsi_threshold": [45, 50, 55],
             "atr_sl_multiplier": [2.0, 2.5, 3.0],
+            "rr_ratio": [2.0, 2.5, 3.0],
+            "min_bars_between_trades": [72, 120, 168],
         }
         self.train_years = 2
         self.test_years = 1
@@ -69,8 +67,8 @@ class WalkForward:
             )
             results.append(result)
 
-            print(f"  Params: EMA {best_params['ema_fast']}/{best_params['ema_slow']}, "
-                  f"RSI {best_params['rsi_threshold']}, ATR {best_params['atr_sl_multiplier']}")
+            print(f"  Params: ATR SL {best_params['atr_sl_multiplier']}, R:R {best_params['rr_ratio']}, "
+                  f"Cooldown {best_params['min_bars_between_trades']}")
             print(f"  Train: {train_return:+.2f}% (PF {train_pf:.2f}, {train_trades} trades)")
             print(f"  Test:  {test_return:+.2f}% (PF {test_pf:.2f}, {test_trades} trades)")
 
@@ -101,35 +99,32 @@ class WalkForward:
     def _optimize(self, train_data: pd.DataFrame) -> Tuple[Dict, float, float, int]:
         keys = list(self.param_grid.keys())
         values = list(self.param_grid.values())
-        best_sharpe = -999
+        best_pf = 0
         best_params = {}
         best_return = 0
-        best_pf = 0
         best_trades = 0
 
         for combo in product(*values):
             params = dict(zip(keys, combo))
-            return_pct, pf, sharpe, trades = self._run_backtest(train_data, params)
+            return_pct, pf, trades = self._run_backtest(train_data, params)
 
-            if sharpe > best_sharpe and trades >= 10:
-                best_sharpe = sharpe
+            if pf > best_pf and trades >= 10:
+                best_pf = pf
                 best_params = params
                 best_return = return_pct
-                best_pf = pf
                 best_trades = trades
 
         return best_params, best_return, best_pf, best_trades
 
     def _test(self, test_data: pd.DataFrame, params: Dict) -> Tuple[float, float, int]:
-        return_pct, pf, _, trades = self._run_backtest(test_data, params)
+        return_pct, pf, trades = self._run_backtest(test_data, params)
         return return_pct, pf, trades
 
-    def _run_backtest(self, df: pd.DataFrame, params: Dict) -> Tuple[float, float, float, int]:
+    def _run_backtest(self, df: pd.DataFrame, params: Dict) -> Tuple[float, float, int]:
         config = TradingConfig(
-            ema_fast=params["ema_fast"],
-            ema_slow=params["ema_slow"],
-            rsi_threshold=params["rsi_threshold"],
             atr_sl_multiplier=params["atr_sl_multiplier"],
+            rr_ratio=params["rr_ratio"],
+            min_bars_between_trades=params["min_bars_between_trades"],
         )
 
         indicators = Indicators(config)
@@ -142,15 +137,14 @@ class WalkForward:
         result = backtester.run(df_sig)
 
         if result["trades"].empty:
-            return 0, 0, 0, 0
+            return 0, 0, 0
 
         m = metrics.calculate(result["trades"], result["equity_curve"])
         return_pct = m["rentabilidad"]
         pf = m["profit_factor"]
-        sharpe = m["sharpe_ratio"]
         trades = m["total_trades"]
 
-        return return_pct, pf, sharpe, trades
+        return return_pct, pf, trades
 
     def print_report(self, results: List[WindowResult]):
         print("\n" + "=" * 70)
@@ -160,13 +154,13 @@ class WalkForward:
         for r in results:
             status = "+" if r.test_return > 0 else "-"
             print(f"\nVentana {r.window_id}: {r.train_start} -> {r.test_end}")
-            print(f"  Params: EMA {r.best_params['ema_fast']}/{r.best_params['ema_slow']}, "
-                  f"RSI {r.best_params['rsi_threshold']}, ATR {r.best_params['atr_sl_multiplier']}")
+            print(f"  Params: ATR SL {r.best_params['atr_sl_multiplier']}, R:R {r.best_params['rr_ratio']}, "
+                  f"Cooldown {r.best_params['min_bars_between_trades']}")
             print(f"  Train: {r.train_return:+.2f}% (PF {r.train_pf:.2f}, {r.train_trades} trades)")
             print(f"  Test:  {r.test_return:+.2f}% (PF {r.test_pf:.2f}, {r.test_trades} trades) [{status}]")
 
-        # Resumen
         test_returns = [r.test_return for r in results]
+        test_pfs = [r.test_pf for r in results]
         profitable_windows = sum(1 for r in test_returns if r > 0)
 
         print(f"\n{'='*70}")
@@ -175,21 +169,22 @@ class WalkForward:
         print(f"  Ventanas totales:        {len(results)}")
         print(f"  Ventanas rentables:      {profitable_windows}/{len(results)} ({profitable_windows/len(results)*100:.0f}%)")
         print(f"  Retorno promedio test:   {np.mean(test_returns):+.2f}%")
+        print(f"  PF promedio test:        {np.mean(test_pfs):.2f}")
         print(f"  Mejor test:              {max(test_returns):+.2f}%")
         print(f"  Peor test:               {min(test_returns):+.2f}%")
-        print(f"  Desviacion estandar:     {np.std(test_returns):.2f}%")
 
 
 if __name__ == "__main__":
-    collector = DataCollector()
-    data = collector.collect_all()
+    df = pd.read_csv("data/raw/BTC_USDT_1h.csv")
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    for c in ["open", "high", "low", "close", "volume"]:
+        df[c] = df[c].astype(float)
 
     wf = WalkForward()
 
-    for (symbol, tf), df in data.items():
-        print(f"\n{'='*70}")
-        print(f"  WALK-FORWARD: {symbol} {tf}")
-        print(f"{'='*70}")
+    print(f"\n{'='*70}")
+    print(f"  WALK-FORWARD: BTC/USDT 1h")
+    print(f"{'='*70}")
 
-        results = wf.run(df)
-        wf.print_report(results)
+    results = wf.run(df)
+    wf.print_report(results)

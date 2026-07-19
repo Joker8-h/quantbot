@@ -10,6 +10,7 @@ class RiskManager:
         self.daily_loss_limit = config.daily_loss_limit
         self.weekly_loss_limit = config.weekly_loss_limit
         self.max_consecutive_losses = config.max_consecutive_losses
+        self.max_open_positions = config.max_open_positions
 
     def calculate_stop_loss(self, entry_price: float, atr_value: float, side: str = "LONG") -> float:
         if side == "LONG":
@@ -30,14 +31,15 @@ class RiskManager:
         atr_value: float,
         side: str = "LONG",
     ) -> float:
+        if self.trail_atr_multiplier <= 0:
+            return stop_price
+
         if side == "LONG":
-            # LONG: stop sube cuando precio sube
             new_stop = current_price - (self.trail_atr_multiplier * atr_value)
-            return max(new_stop, stop_price)  # Solo subir
+            return max(new_stop, stop_price)
         else:  # SHORT
-            # SHORT: stop baja cuando precio baja
             new_stop = current_price + (self.trail_atr_multiplier * atr_value)
-            return min(new_stop, stop_price)  # Solo bajar
+            return min(new_stop, stop_price)
 
     def calculate_position_size(
         self,
@@ -46,14 +48,14 @@ class RiskManager:
         stop_price: float,
         fee: float,
         slippage: float,
+        vol_scale: float = 1.0,
     ) -> float:
-        risk_amount = capital * self.risk_per_trade
+        risk_amount = capital * self.risk_per_trade * vol_scale
         stop_distance = abs(entry_price - stop_price)
 
         if stop_distance == 0:
             return 0.0
 
-        # Ajustar por costos
         cost_factor = 1 + fee + slippage
         effective_distance = stop_distance * cost_factor
 
@@ -91,7 +93,6 @@ if __name__ == "__main__":
     entry = 50000.0
     atr = 500.0
 
-    # Test LONG
     sl_long = rm.calculate_stop_loss(entry, atr, "LONG")
     tp_long = rm.calculate_take_profit(entry, entry - sl_long, "LONG")
     size_long = rm.calculate_position_size(capital, entry, sl_long, 0.001, 0.0005)
@@ -102,7 +103,6 @@ if __name__ == "__main__":
     print(f"TP:     ${tp_long:,.2f} ({abs(tp_long-entry)/entry*100:.2f}%)")
     print(f"Size:   {size_long:.6f} BTC")
 
-    # Test SHORT
     sl_short = rm.calculate_stop_loss(entry, atr, "SHORT")
     tp_short = rm.calculate_take_profit(entry, sl_short - entry, "SHORT")
     size_short = rm.calculate_position_size(capital, entry, sl_short, 0.001, 0.0005)
@@ -112,9 +112,3 @@ if __name__ == "__main__":
     print(f"SL:     ${sl_short:,.2f} ({abs(sl_short-entry)/entry*100:.2f}%)")
     print(f"TP:     ${tp_short:,.2f} ({abs(entry-tp_short)/entry*100:.2f}%)")
     print(f"Size:   {size_short:.6f} BTC")
-
-    # Test trailing stop
-    print("\n=== TRAILING STOP ===")
-    price = 51000.0
-    new_sl = rm.update_trailing_stop(price, sl_long, atr, "LONG")
-    print(f"Price: ${price:,.2f} | Old SL: ${sl_long:,.2f} | New SL: ${new_sl:,.2f}")

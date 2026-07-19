@@ -9,42 +9,65 @@ class TradingConfig:
     # Capital
     initial_capital: float = 100.0
 
-    # Símbolos y temporalidades
+    # Simbolos y temporalidades
     symbols: List[str] = field(default_factory=lambda: ["BTC/USDT"])
     timeframes: List[str] = field(default_factory=lambda: ["1h"])
 
-    # Período de datos históricos
+    # Periodo de datos historicos
     start_date: str = "2019-01-01"
     end_date: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Indicadores
+    # Indicadores base
     ema_fast: int = 20
     ema_slow: int = 50
     rsi_period: int = 14
-    rsi_threshold: int = 50
+    rsi_threshold: int = 55
     atr_period: int = 14
     volume_avg_period: int = 20
 
+    # Indicadores nuevos
+    adx_period: int = 14
+    adx_threshold: int = 25
+    bb_period: int = 20
+    bb_std: float = 2.0
+
+    # Sistema de puntuacion (confluencia)
+    min_score: int = 4
+
+    # Market Regime
+    lateral_adx_threshold: int = 20
+    volatile_atr_multiplier: float = 2.0
+
     # Riesgo
-    risk_per_trade: float = 0.01  # 1% del capital
-    rr_ratio: float = 2.0  # Risk/Reward 1:2
-    atr_sl_multiplier: float = 3.0  # Stop Loss = 3.0 * ATR
+    risk_per_trade: float = 0.005  # 0.5% del capital
+    rr_ratio: float = 2.5  # Risk/Reward 1:2.5 (mejor grid result)
+    atr_sl_multiplier: float = 2.5  # Stop Loss = 2.5 * ATR (mejor grid result)
+    max_open_positions: int = 2
 
     # Trailing Stop
-    trail_atr_multiplier: float = 0.0  # 0 = trailing stop desactivado
+    trail_atr_multiplier: float = 0.0  # 0 = trailing stop desactivado (original)
 
     # Comisiones y slippage
-    fee: float = 0.001  # 0.1% por operación
+    fee: float = 0.001  # 0.1% por operacion
     slippage: float = 0.0005  # 0.05%
 
     # Circuit breakers
-    daily_loss_limit: float = 0.02  # 2% pérdida diaria
-    weekly_loss_limit: float = 0.05  # 5% pérdida semanal
-    max_consecutive_losses: int = 10
-    cooldown_hours: int = 72  # Horas de pausa después del circuit breaker
+    daily_loss_limit: float = 0.02  # 2% perdida diaria
+    weekly_loss_limit: float = 0.05  # 5% perdida semanal
+    max_consecutive_losses: int = 3
+    cooldown_hours: int = 24  # Pausa 24h despues de 3 losses consecutivas
+
+    # Minimo espacio entre trades
+    min_bars_between_trades: int = 168  # 7 dias en 1h (optimizado)
 
     # Backtesting
-    max_open_positions: int = 1
+    max_open_positions: int = 2
+
+    # Escenarios de costos (para testing)
+    scenario_optimistic_fee: float = 0.00075
+    scenario_optimistic_slippage: float = 0.0003
+    scenario_pessimistic_fee: float = 0.0015
+    scenario_pessimistic_slippage: float = 0.001
 
     # Rutas
     data_dir: str = os.path.join(os.path.dirname(__file__), "data", "raw")
@@ -58,6 +81,6 @@ class BacktestScenarios:
     optimistic: float = 0.0005  # 0.05%
 
 
-# Configuración por defecto
+# Configuracion por defecto
 CONFIG = TradingConfig()
 SCENARIOS = BacktestScenarios()

@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from config import CONFIG
 from risk_manager import RiskManager
@@ -12,11 +12,14 @@ class Backtester:
         self.fee = config.fee
         self.slippage = config.slippage
         self.cooldown_hours = config.cooldown_hours
+        self.min_bars_between = config.min_bars_between_trades
+        self.max_positions = config.max_open_positions
         self.risk_manager = RiskManager(config)
 
     def run(self, df: pd.DataFrame) -> Dict:
         capital = self.initial_capital
         trades: List[Dict] = []
+        open_positions: List[Dict] = []
         equity_curve = [{"datetime": df["datetime"].iloc[0], "equity": capital}]
 
         daily_pnl = 0.0
@@ -24,18 +27,9 @@ class Backtester:
         consecutive_losses = 0
         current_day = None
         current_week = None
-
-        in_position = False
-        position_type = None  # "LONG" o "SHORT"
-        entry_price = 0.0
-        entry_time = None
-        position_size = 0.0
-        stop_price = 0.0
-        take_price = 0.0
+        last_trade_time = None
 
         cooldown_until = None
-        last_trade_time = None
-        min_bars_between_trades = 48  # Minimo 48 velas (2 dias en 1h) entre trades
 
         for i, row in df.iterrows():
             if i < 2:
@@ -43,10 +37,12 @@ class Backtester:
 
             dt = row["datetime"]
 
-            # Cooldown: saltar velas si estamos en pausa
+            # Cooldown check
             if cooldown_until and dt < cooldown_until:
-                unrealized = self._calc_unrealized(row["close"], position_type,
-                                                    entry_price, position_size) if in_position else 0
+                unrealized = sum(
+                    self._calc_unrealized(row["close"], p["side"], p["entry_price"], p["size"])
+                    for p in open_positions
+                )
                 equity_curve.append({"datetime": dt, "equity": capital + unrealized})
                 continue
 
@@ -58,28 +54,27 @@ class Backtester:
                 weekly_pnl = 0.0
                 current_week = dt.isocalendar()[1]
 
-            # Circuit breaker check
+            # Circuit breaker
             cb = self.risk_manager.check_circuit_breaker(
                 daily_pnl / max(capital, 0.01),
                 weekly_pnl / max(capital, 0.01),
                 consecutive_losses,
             )
             if cb["should_stop"]:
-                if in_position:
-                    net_pnl = self._close_position(row, entry_price, position_type,
-                                                    position_size, "circuit_breaker")
+                # Cerrar todas las posiciones abiertas
+                for pos in open_positions[:]:
+                    net_pnl = self._close_position(row, pos["entry_price"], pos["side"],
+                                                    pos["size"], "circuit_breaker")
                     capital += net_pnl
                     trades.append(self._make_trade(
-                        entry_time, dt, entry_price, None, position_type,
-                        position_size, net_pnl, "circuit_breaker"
+                        pos["entry_time"], dt, pos["entry_price"], None, pos["side"],
+                        pos["size"], net_pnl, "circuit_breaker"
                     ))
                     daily_pnl += net_pnl
                     weekly_pnl += net_pnl
                     consecutive_losses = consecutive_losses + 1 if net_pnl < 0 else 0
-                    in_position = False
-                    position_type = None
+                open_positions.clear()
 
-                # Activar cooldown en vez de parar para siempre
                 cooldown_until = dt + pd.Timedelta(hours=self.cooldown_hours)
                 consecutive_losses = 0
                 daily_pnl = 0.0
@@ -87,65 +82,67 @@ class Backtester:
                 equity_curve.append({"datetime": dt, "equity": capital})
                 continue
 
-            # Si estamos en posición, verificar SL/TP y trailing stop
-            if in_position:
-                # Actualizar trailing stop solo si está activado
+            # Verificar SL/TP para posiciones abiertas
+            for pos in open_positions[:]:
+                # Trailing stop
                 if self.risk_manager.trail_atr_multiplier > 0:
-                    if position_type == "LONG":
-                        stop_price = self.risk_manager.update_trailing_stop(
-                            row["close"], stop_price, row["atr"], "LONG"
-                        )
-                    elif position_type == "SHORT":
-                        stop_price = self.risk_manager.update_trailing_stop(
-                            row["close"], stop_price, row["atr"], "SHORT"
-                        )
+                    atr_val = row["atr"] if "atr" in row.index else 0
+                    pos["stop_price"] = self.risk_manager.update_trailing_stop(
+                        row["close"], pos["stop_price"], atr_val, pos["side"]
+                    )
 
-                # Check Stop Loss
+                # Stop Loss
                 hit_sl = False
-                if position_type == "LONG" and row["low"] <= stop_price:
+                if pos["side"] == "LONG" and row["low"] <= pos["stop_price"]:
                     hit_sl = True
-                elif position_type == "SHORT" and row["high"] >= stop_price:
+                elif pos["side"] == "SHORT" and row["high"] >= pos["stop_price"]:
                     hit_sl = True
 
                 if hit_sl:
-                    net_pnl = self._close_position(row, entry_price, position_type,
-                                                    position_size, "stop_loss", stop_price)
+                    net_pnl = self._close_position(row, pos["entry_price"], pos["side"],
+                                                    pos["size"], "stop_loss", pos["stop_price"])
                     capital += net_pnl
                     trades.append(self._make_trade(
-                        entry_time, dt, entry_price, None, position_type,
-                        position_size, net_pnl, "stop_loss"
+                        pos["entry_time"], dt, pos["entry_price"], None, pos["side"],
+                        pos["size"], net_pnl, "stop_loss"
                     ))
                     daily_pnl += net_pnl
                     weekly_pnl += net_pnl
                     consecutive_losses += 1
-                    in_position = False
-                    position_type = None
+                    open_positions.remove(pos)
+                    continue
 
-                # Check Take Profit
-                elif not hit_sl:
-                    hit_tp = False
-                    if position_type == "LONG" and row["high"] >= take_price:
-                        hit_tp = True
-                    elif position_type == "SHORT" and row["low"] <= take_price:
-                        hit_tp = True
+                # Take Profit
+                hit_tp = False
+                if pos["side"] == "LONG" and row["high"] >= pos["take_price"]:
+                    hit_tp = True
+                elif pos["side"] == "SHORT" and row["low"] <= pos["take_price"]:
+                    hit_tp = True
 
-                    if hit_tp:
-                        net_pnl = self._close_position(row, entry_price, position_type,
-                                                        position_size, "take_profit", take_price)
-                        capital += net_pnl
-                        trades.append(self._make_trade(
-                            entry_time, dt, entry_price, None, position_type,
-                            position_size, net_pnl, "take_profit"
-                        ))
-                        daily_pnl += net_pnl
-                        weekly_pnl += net_pnl
-                        consecutive_losses = 0
-                        in_position = False
-                        position_type = None
+                if hit_tp:
+                    net_pnl = self._close_position(row, pos["entry_price"], pos["side"],
+                                                    pos["size"], "take_profit", pos["take_price"])
+                    capital += net_pnl
+                    trades.append(self._make_trade(
+                        pos["entry_time"], dt, pos["entry_price"], None, pos["side"],
+                        pos["size"], net_pnl, "take_profit"
+                    ))
+                    daily_pnl += net_pnl
+                    weekly_pnl += net_pnl
+                    consecutive_losses = 0
+                    open_positions.remove(pos)
 
-            # Nueva entrada si no hay posición y hay señal
-            can_trade = last_trade_time is None or (dt - last_trade_time).total_seconds() / 3600 >= min_bars_between_trades
-            if not in_position and row["signal"] != 0 and capital > 0 and can_trade:
+            # Nueva entrada
+            can_trade = last_trade_time is None or \
+                (dt - last_trade_time).total_seconds() / 3600 >= self.min_bars_between
+
+            vol_scale = row.get("vol_scale", 1.0)
+
+            if (can_trade
+                and len(open_positions) < self.max_positions
+                and row["signal"] != 0
+                and capital > 0):
+
                 signal = row["signal"]
                 side = "LONG" if signal == 1 else "SHORT"
                 atr_value = row["atr"]
@@ -162,30 +159,38 @@ class Backtester:
                     take_price = self.risk_manager.calculate_take_profit(entry_price, stop_distance, "SHORT")
 
                 position_size = self.risk_manager.calculate_position_size(
-                    capital, entry_price, stop_price, self.fee, self.slippage
+                    capital, entry_price, stop_price, self.fee, self.slippage, vol_scale
                 )
 
-                if position_size > 0 and entry_price * position_size <= capital:
+                if position_size > 0 and entry_price * position_size <= capital * 0.95:
                     fee_cost = entry_price * position_size * self.fee
                     capital -= fee_cost
-                    in_position = True
-                    position_type = side
-                    entry_time = dt
+                    open_positions.append({
+                        "entry_time": dt,
+                        "entry_price": entry_price,
+                        "side": side,
+                        "size": position_size,
+                        "stop_price": stop_price,
+                        "take_price": take_price,
+                    })
                     last_trade_time = dt
 
-            unrealized = self._calc_unrealized(row["close"], position_type,
-                                                entry_price, position_size) if in_position else 0
+            # Equity
+            unrealized = sum(
+                self._calc_unrealized(row["close"], p["side"], p["entry_price"], p["size"])
+                for p in open_positions
+            )
             equity_curve.append({"datetime": dt, "equity": capital + unrealized})
 
-        # Cerrar posición abierta al final
-        if in_position:
+        # Cerrar posiciones abiertas al final
+        for pos in open_positions:
             last_row = df.iloc[-1]
-            net_pnl = self._close_position(last_row, entry_price, position_type,
-                                            position_size, "end_of_data")
+            net_pnl = self._close_position(last_row, pos["entry_price"], pos["side"],
+                                            pos["size"], "end_of_data")
             capital += net_pnl
             trades.append(self._make_trade(
-                entry_time, last_row["datetime"], entry_price, None, position_type,
-                position_size, net_pnl, "end_of_data"
+                pos["entry_time"], last_row["datetime"], pos["entry_price"], None, pos["side"],
+                pos["size"], net_pnl, "end_of_data"
             ))
 
         equity_df = pd.DataFrame(equity_curve)
@@ -202,7 +207,7 @@ class Backtester:
                           entry_price: float, size: float) -> float:
         if side == "LONG":
             return (current_price - entry_price) * size
-        else:  # SHORT
+        else:
             return (entry_price - current_price) * size
 
     def _close_position(self, row, entry_price: float, side: str,
@@ -214,7 +219,7 @@ class Backtester:
             else:
                 exit_price = row["close"] * (1 - self.slippage)
             pnl = (exit_price - entry_price) * size
-        else:  # SHORT
+        else:
             if limit_price:
                 exit_price = limit_price * (1 + self.slippage)
             else:
@@ -227,7 +232,7 @@ class Backtester:
     def _make_trade(self, entry_time, exit_time, entry_price, exit_price,
                      side, size, pnl, reason) -> Dict:
         if exit_price is None:
-            exit_price = entry_price  # Placeholder
+            exit_price = entry_price
         fee_cost = (entry_price + exit_price) * size * self.fee
         return {
             "entry_time": entry_time,
@@ -246,11 +251,15 @@ if __name__ == "__main__":
     from data_collector import DataCollector
     from indicators import Indicators
     from strategy import Strategy
+    from market_regime import MarketRegime
+    from metrics import Metrics
 
     collector = DataCollector()
     indicators = Indicators()
     strategy = Strategy()
+    regime = MarketRegime()
     backtester = Backtester()
+    metrics = Metrics()
 
     data = collector.collect_all()
 
@@ -260,16 +269,16 @@ if __name__ == "__main__":
         print(f"{'='*50}")
 
         df_ind = indicators.add_all(df)
-        df_sig = strategy.generate_signals(df_ind)
+        df_regime = regime.detect(df_ind)
+        df_sig = strategy.generate_signals(df_regime)
         result = backtester.run(df_sig)
 
-        print(f"Capital inicial: ${result['initial_capital']:.2f}")
-        print(f"Capital final:   ${result['final_capital']:.2f}")
-        print(f"Operaciones:     {len(result['trades'])}")
+        m = metrics.calculate(result["trades"], result["equity_curve"])
 
-        if not result["trades"].empty:
-            total_pnl = result["trades"]["pnl"].sum()
-            print(f"PnL total:       ${total_pnl:.2f}")
-            print(f"Rentabilidad:    {total_pnl/result['initial_capital']*100:.2f}%")
-            print(f"\nPor tipo:")
-            print(result["trades"]["side"].value_counts().to_string())
+        print(f"Capital inicial: ${m['initial_capital']:.2f}")
+        print(f"Capital final:   ${m['final_capital']:.2f}")
+        print(f"Rentabilidad:    {m['rentabilidad']:+.2f}%")
+        print(f"Total trades:    {m['total_trades']}")
+        print(f"Win Rate:        {m['win_rate']:.1f}%")
+        print(f"Profit Factor:   {m['profit_factor']:.2f}")
+        print(f"Max Drawdown:    {m['max_drawdown']:.2f}%")
