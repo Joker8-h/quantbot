@@ -1,0 +1,9 @@
+Fecha: 2026-07-18
+Symbol: BTC/USDT | Timeframe: 1h
+Velas: 66061
+Precio: $63,910.04
+Capital: $100.00 -> $85.45
+Rentabilidad: -14.55%
+Trades: 690
+Win Rate: 38.1%
+Profit Factor: 1.04

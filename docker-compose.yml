@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./quantbot.db
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - WHATSAPP_SERVICE_URL=http://whatsapp:3001
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  paper-trader:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: cd /app && python paper_trader.py
+    environment:
+      - DATABASE_URL=sqlite:///./quantbot.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  whatsapp:
+    build:
+      context: ./whatsapp-service
+    ports:
+      - "3001:3001"
+    environment:
+      - WHATSAPP_PHONE=${WHATSAPP_PHONE:-}
+    volumes:
+      - ./whatsapp-service/auth_data:/app/auth_data
+    restart: unless-stopped
