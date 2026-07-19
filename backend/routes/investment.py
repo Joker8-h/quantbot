@@ -27,9 +27,22 @@ DB_PATH = os.path.join(ROOT, "dca_state.json")
 
 
 @router.get("/portfolio")
-def portfolio(symbol: str = Query("BTC/USDT"), modo: str = Query("conservador")):
-    """Estado simple de la inversion para el dashboard del usuario."""
-    r = estado_completo(symbol=symbol, api_key=backend_config.OPENAI_API_KEY, db_path=DB_PATH)
+def portfolio(symbol: str = Query("BTC/USDT"), modo: str = Query("conservador"),
+              symbols: str = Query(None)):
+    """Estado simple de la inversion para el dashboard del usuario.
+
+    modo=moderado acepta symbols=BTC/USDT,ETH/USDT,SOL/USDT para mostrar
+    el portafolio multi-activo y la distribucion de exposicion.
+    """
+    simbolos = None
+    if modo == "moderado" and symbols:
+        simbolos = [s.strip() for s in symbols.split(",") if s.strip()]
+    r = estado_completo(
+        symbol=symbol,
+        api_key=backend_config.OPENAI_API_KEY,
+        db_path=DB_PATH,
+        symbols=simbolos,
+    )
     r["modo"] = modo
     r["modo_info"] = MODOS.get(Modo(modo), MODOS[MODO_DEFECTO])
     return r

@@ -102,8 +102,15 @@ def evaluar_riesgo(d2: pd.DataFrame, api_key: str = None) -> tuple:
 
 
 def estado_completo(symbol: str = "BTC/USDT", api_key: str = None,
-                    db_path: str = None) -> dict:
-    """Devuelve el estado completo del Modo Conservador para el dashboard."""
+                    db_path: str = None, symbols: list = None) -> dict:
+    """Devuelve el estado completo del Modo Conservador para el dashboard.
+
+    Si se pasa `symbols` (Modo Moderado), calcula el estado agregado de
+    varios activos y la distribucion de exposicion.
+    """
+    if symbols:
+        return _estado_multi(symbols, api_key, db_path)
+
     d2 = _cargar_1d(symbol)
     if d2.empty:
         return {"error": "sin datos"}
@@ -137,6 +144,55 @@ def estado_completo(symbol: str = "BTC/USDT", api_key: str = None,
         "pausado": est.pausado,
         "proxima_compra": est.proxima_compra,
         "total_compras": len(est.compras),
+    }
+
+
+def _estado_multi(symbols: list, api_key: str, db_path: str) -> dict:
+    """Modo Moderado: estado agregado de varios activos + distribucion."""
+    from datetime import datetime, timedelta
+    proxima = (datetime.now() + timedelta(days=30)).strftime("%d de %B")
+
+    activos = []
+    capital_total = 0.0
+    valor_total = 0.0
+    for sym in symbols:
+        d2 = _cargar_1d(sym)
+        if d2.empty:
+            continue
+        vivo = _precio_vivo(sym)
+        precio = vivo if vivo else float(d2['close'].iloc[-1])
+        nivel, razon, _ = evaluar_riesgo(d2, api_key)
+        engine = DCAEngine(db_path=db_path or os.path.join(ROOT, f"dca_state_{sym.replace('/', '_')}.json"))
+        est = engine.estado(
+            precio_actual=precio,
+            riesgo=nivel,
+            razon=razon,
+            proxima_compra=proxima,
+        )
+        capital_total += est.capital_invertido
+        valor_total += est.valor_actual
+        activos.append({
+            "symbol": sym,
+            "precio": round(precio, 2),
+            "riesgo": nivel,
+            "riesgo_emoji": EMOJI.get(nivel, "🟢"),
+            "capital_invertido": est.capital_invertido,
+            "valor_actual": est.valor_actual,
+            "ganancia_pct": est.ganancia_pct,
+        })
+    ganancia = valor_total - capital_total
+    ganancia_pct = (ganancia / capital_total * 100) if capital_total > 0 else 0.0
+    # Distribucion de exposicion (por valor actual)
+    for a in activos:
+        a["peso_pct"] = round(a["valor_actual"] / valor_total * 100, 1) if valor_total > 0 else 0.0
+    return {
+        "multi": True,
+        "activos": activos,
+        "capital_invertido": round(capital_total, 2),
+        "valor_actual": round(valor_total, 2),
+        "ganancia": round(ganancia, 2),
+        "ganancia_pct": round(ganancia_pct, 2),
+        "proxima_compra": proxima,
     }
 
 

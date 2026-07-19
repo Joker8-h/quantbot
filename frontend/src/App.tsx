@@ -10,6 +10,7 @@ import Sistema from './pages/Sistema';
 import Cuenta from './pages/Cuenta';
 import Alertas from './pages/Alertas';
 import Admin from './pages/Admin';
+import Modos from './pages/Modos';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -33,6 +34,7 @@ function AppRoutes() {
       <Route path="/ganancias" element={<ProtectedRoute><Ganancias /></ProtectedRoute>} />
       <Route path="/sistema" element={<ProtectedRoute><Sistema /></ProtectedRoute>} />
       <Route path="/cuenta" element={<ProtectedRoute><Cuenta /></ProtectedRoute>} />
+      <Route path="/modos" element={<ProtectedRoute><Modos /></ProtectedRoute>} />
       <Route path="/alertas" element={<ProtectedRoute><Alertas /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
     </Routes>

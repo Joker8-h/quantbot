@@ -1,9 +1,22 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 
-interface PortfolioData {
+interface ActivoData {
   symbol: string;
   precio: number;
+  riesgo: string;
+  riesgo_emoji: string;
+  capital_invertido: number;
+  valor_actual: number;
+  ganancia_pct: number;
+  peso_pct: number;
+}
+
+interface PortfolioData {
+  symbol?: string;
+  multi?: boolean;
+  activos?: ActivoData[];
+  precio?: number;
   riesgo: string;
   riesgo_emoji: string;
   accion: string;
@@ -34,15 +47,25 @@ export default function Inversion() {
   const [loading, setLoading] = useState(true);
   const [pausando, setPausando] = useState(false);
   const [msg, setMsg] = useState('');
+  const [modo, setModo] = useState<string>(localStorage.getItem('quantbot_modo') || 'conservador');
 
   const cargar = () => {
-    api.get('/portfolio').then((res) => {
+    setLoading(true);
+    const params = modo === 'moderado'
+      ? `/portfolio?modo=moderado&symbols=BTC/USDT,ETH/USDT,SOL/USDT`
+      : `/portfolio?modo=${modo}`;
+    api.get(params).then((res) => {
       setData(res.data);
       setLoading(false);
     }).catch(() => setLoading(false));
   };
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => {
+    cargar();
+    const onCambio = () => setModo(localStorage.getItem('quantbot_modo') || 'conservador');
+    window.addEventListener('modo-cambiado', onCambio);
+    return () => window.removeEventListener('modo-cambiado', onCambio);
+  }, []);
 
   const togglePausa = () => {
     setPausando(true);
@@ -70,6 +93,20 @@ export default function Inversion() {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold">Mi Inversión</h1>
+
+      <div className="flex gap-2">
+        {['conservador', 'moderado', 'experimental'].map((m) => (
+          <button
+            key={m}
+            onClick={() => { setModo(m); localStorage.setItem('quantbot_modo', m); cargar(); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${
+              modo === m ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
 
       {msg && <div className="bg-[#1e293b] border border-[#334155] px-4 py-2 rounded-lg text-sm text-slate-300">{msg}</div>}
 
@@ -99,13 +136,39 @@ export default function Inversion() {
         </div>
       </div>
 
+      {/* Distribución multi-activo (Modo Moderado) */}
+      {data.multi && data.activos && (
+        <div className="bg-[#1e293b] p-5 rounded-xl border border-[#334155]">
+          <div className="text-sm text-slate-400 mb-3">Distribución de exposición</div>
+          <div className="space-y-3">
+            {data.activos.map((a) => (
+              <div key={a.symbol}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-white font-medium">{a.symbol}</span>
+                  {(() => {
+                    const gp = a.ganancia_pct ?? 0;
+                    return <span className="text-slate-400">{a.peso_pct}% · {gp >= 0 ? '+' : ''}{gp}%</span>;
+                  })()}
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-2">
+                  <div
+                    className="bg-emerald-500 h-2 rounded-full"
+                    style={{ width: `${Math.max(a.peso_pct ?? 0, 3)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Próxima compra */}
       <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155] flex items-center justify-between">
         <div>
           <div className="text-sm text-slate-400">Próxima compra programada</div>
           <div className="text-white font-medium">{data.proxima_compra}</div>
         </div>
-        <div className="text-sm text-slate-400">Precio actual: {fmt(data.precio)}</div>
+        <div className="text-sm text-slate-400">Precio actual: {fmt(data.precio ?? 0)}</div>
       </div>
 
       {/* Acciones */}
