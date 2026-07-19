@@ -17,6 +17,7 @@ from typing import Optional
 import importlib
 backend_config = importlib.import_module("backend.config").config
 from services.investment import estado_completo, evaluar_riesgo, _cargar_1d, calcular_features_riesgo
+from services.paper_trader import simular_estrategia
 from dca_engine import DCAEngine
 from modos import Modo, MODOS, MODO_DEFECTO
 from risk_filter import ACCIONES, EMOJI
@@ -35,6 +36,13 @@ def portfolio(symbol: str = Query("BTC/USDT"), modo: str = Query("conservador"),
     el portafolio multi-activo y la distribucion de exposicion.
     """
     simbolos = None
+    if modo == "experimental":
+        # Modo Experimental: SOLO simulacion paper, sin dinero real
+        sym = symbol or "BTC/USDT"
+        r = simular_estrategia(sym)
+        r["modo"] = modo
+        r["modo_info"] = MODOS.get(Modo(modo), MODOS[MODO_DEFECTO])
+        return r
     if modo == "moderado" and symbols:
         simbolos = [s.strip() for s in symbols.split(",") if s.strip()]
     r = estado_completo(

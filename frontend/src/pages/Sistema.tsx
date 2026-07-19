@@ -114,35 +114,31 @@ export default function Sistema() {
         </div>
       </div>
 
-      {/* Indicadores */}
+      {/* Transparencia: resultados de las pruebas */}
       <div className="bg-[#1e293b] p-6 rounded-xl border border-[#334155]">
-        <h2 className="text-lg font-semibold mb-4">Indicadores</h2>
+        <h2 className="text-lg font-semibold mb-4">🔬 Transparencia · Qué probamos</h2>
+        <p className="text-sm text-slate-300 leading-relaxed mb-4">
+          Analizamos estrategias activas de trading (seguimiento de tendencia, rupturas, mean reversion)
+          sobre datos reales de BTC, ETH y SOL entre 2019 y 2026. Resultado honesto:
+        </p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div className="bg-slate-800/50 p-4 rounded-lg">
-            <div className="text-sm text-slate-400">EMA Rápida</div>
-            <div className="text-lg font-medium mt-1">9</div>
+            <div className="text-sm text-slate-400">Profit Factor</div>
+            <div className="text-lg font-medium mt-1 text-red-400">0.12 - 0.67</div>
           </div>
           <div className="bg-slate-800/50 p-4 rounded-lg">
-            <div className="text-sm text-slate-400">EMA Lenta</div>
-            <div className="text-lg font-medium mt-1">21</div>
+            <div className="text-sm text-slate-400">AUC del modelo</div>
+            <div className="text-lg font-medium mt-1 text-red-400">~0.50</div>
           </div>
           <div className="bg-slate-800/50 p-4 rounded-lg">
-            <div className="text-sm text-slate-400">RSI Período</div>
-            <div className="text-lg font-medium mt-1">14</div>
-          </div>
-          <div className="bg-slate-800/50 p-4 rounded-lg">
-            <div className="text-sm text-slate-400">ATR Período</div>
-            <div className="text-lg font-medium mt-1">14</div>
-          </div>
-          <div className="bg-slate-800/50 p-4 rounded-lg">
-            <div className="text-sm text-slate-400">SL ATR</div>
-            <div className="text-lg font-medium mt-1">3.0</div>
-          </div>
-          <div className="bg-slate-800/50 p-4 rounded-lg">
-            <div className="text-sm text-slate-400">TP ATR</div>
-            <div className="text-lg font-medium mt-1">1.5</div>
+            <div className="text-sm text-slate-400">Ventaja vs Hold</div>
+            <div className="text-lg font-medium mt-1 text-red-400">Ninguna</div>
           </div>
         </div>
+        <p className="text-xs text-slate-400 mt-4">
+          Por eso usamos DCA + hold con filtro de riesgo por IA. El Modo Experimental es simulación pura
+          (paper trading), sin dinero real.
+        </p>
       </div>
     </div>
   );

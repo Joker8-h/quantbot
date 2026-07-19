@@ -28,6 +28,18 @@ interface PortfolioData {
   pausado: boolean;
   proxima_compra: string;
   total_compras: number;
+  // Modo Experimental (paper trading)
+  paper?: boolean;
+  capital_inicial?: number;
+  valor_final?: number;
+  retorno_pct?: number;
+  retorno_hold_pct?: number;
+  valor_hold?: number;
+  supero_hold?: boolean;
+  drawdown_pct?: number;
+  trades?: number;
+  advertencia?: string;
+  ventana_dias?: number;
 }
 
 const RIESGO_COLOR: Record<string, string> = {
@@ -171,7 +183,53 @@ export default function Inversion() {
         <div className="text-sm text-slate-400">Precio actual: {fmt(data.precio ?? 0)}</div>
       </div>
 
-      {/* Acciones */}
+      {/* Modo Experimental: simulación PAPER */}
+      {modo === 'experimental' && data.paper && (
+        <div className="space-y-4">
+          <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl">
+            <div className="text-sm font-semibold text-red-300">🔴 Modo Experimental · Solo simulación</div>
+            <div className="text-xs text-slate-300 mt-1">{data.advertencia}</div>
+          </div>
+
+          <div className="bg-[#1e293b] p-6 rounded-xl border border-[#334155] text-center">
+            <div className="text-sm text-slate-400 mb-1">Resultado simulado ({data.symbol})</div>
+            <div className="text-4xl font-bold text-white">{fmt(data.valor_final ?? 0)}</div>
+            <div className={`text-lg font-semibold mt-2 ${(data.retorno_pct ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {(data.retorno_pct ?? 0) >= 0 ? '+' : ''}{data.retorno_pct}%
+            </div>
+            <div className="text-xs text-slate-500 mt-2">
+              Capital inicial: {fmt(data.capital_inicial ?? 0)} · {data.trades} operaciones simuladas
+            </div>
+          </div>
+
+          <div className="bg-[#1e293b] p-5 rounded-xl border border-[#334155] space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Estrategia activa (90 días)</span>
+              <span className={(data.retorno_pct ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                {data.retorno_pct}%
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Solo comprar y mantener</span>
+              <span className={(data.retorno_hold_pct ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                {data.retorno_hold_pct}%
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Caída máxima (drawdown)</span>
+              <span className="text-red-400">{data.drawdown_pct}%</span>
+            </div>
+            <div className="pt-2 border-t border-[#334155] text-xs text-slate-400">
+              {data.supero_hold
+                ? 'En este periodo la estrategia superó al hold, pero históricamente no ha demostrado ventaja sostenida.'
+                : 'En este periodo la estrategia no superó al simple hold.'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Acciones (solo conservador/moderado) */}
+      {modo !== 'experimental' && (
       <div className="flex gap-3">
         <button
           onClick={ejecutarCompra}
@@ -188,6 +246,7 @@ export default function Inversion() {
           {data.pausado ? 'Reanudar inversión' : 'Pausar inversión'}
         </button>
       </div>
+      )}
 
       <p className="text-xs text-slate-500 text-center leading-relaxed">
         No intentamos adivinar el mercado. Invertimos con disciplina (DCA) y reducimos el

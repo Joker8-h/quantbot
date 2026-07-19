@@ -87,6 +87,17 @@ export default function Inicio() {
         </div>
       </div>
 
+      {/* Mensaje honesto: no hay edge activo comprobado */}
+      <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-xl">
+        <div className="text-sm font-semibold text-emerald-300">💡 Nuestra filosofía</div>
+        <div className="text-xs text-slate-300 mt-1 leading-relaxed">
+          Probamos a fondo estrategias activas en BTC, ETH y SOL (2019-2026) y <b>ninguna mostró
+          ventaja real</b> sobre simplemente comprar y mantener (profit factor 0.12-0.67, AUC ~0.5).
+          Por eso QuantBot invierte con disciplina (DCA + hold) y la IA solo avisa cuando el riesgo es alto.
+          El Modo Experimental es pura simulación, sin dinero real.
+        </div>
+      </div>
+
       {/* Balance Principal */}
       <div className="bg-[#1e293b] p-6 rounded-xl border border-[#334155]">
         <div className="text-sm text-slate-400 mb-1">Balance Total</div>
