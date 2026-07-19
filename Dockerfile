@@ -1,3 +1,11 @@
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -10,7 +18,7 @@ COPY config.py .
 COPY indicators.py .
 COPY strategy.py .
 COPY risk_manager.py .
-COPY frontend/dist/ ./static/
+COPY --from=frontend-builder /app/frontend/dist ./static/
 
 EXPOSE 8000
 
