@@ -1,11 +1,17 @@
 import os
 import time
+import importlib.util
 from datetime import datetime, timezone
 
 import ccxt
 import pandas as pd
 
-from config import CONFIG
+# Resolver config RAIZ por ruta de archivo (evita colision con backend/config.py)
+_root_cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.py")
+_spec = importlib.util.spec_from_file_location("root_config_module", _root_cfg_path)
+_root_cfg_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_root_cfg_mod)
+CONFIG = _root_cfg_mod.CONFIG
 
 
 class DataCollector:

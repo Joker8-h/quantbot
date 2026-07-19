@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Inicio from './pages/Inicio';
+import Inversion from './pages/Inversion';
 import Ganancias from './pages/Ganancias';
 import Sistema from './pages/Sistema';
 import Cuenta from './pages/Cuenta';
@@ -27,6 +28,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+      <Route path="/inversion" element={<ProtectedRoute><Inversion /></ProtectedRoute>} />
       <Route path="/" element={<ProtectedRoute><Inicio /></ProtectedRoute>} />
       <Route path="/ganancias" element={<ProtectedRoute><Ganancias /></ProtectedRoute>} />
       <Route path="/sistema" element={<ProtectedRoute><Sistema /></ProtectedRoute>} />

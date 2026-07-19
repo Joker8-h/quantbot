@@ -1,7 +1,18 @@
 import pandas as pd
 import numpy as np
+import os
+import importlib.util
 
-from config import CONFIG
+# Resolver el config RAIZ por ruta de archivo para evitar colision de
+# nombres con backend/config.py (que exporta 'config', no 'CONFIG').
+def _load_root_config():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.py")
+    spec = importlib.util.spec_from_file_location("root_config_module", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.CONFIG
+
+CONFIG = _load_root_config()
 
 
 class Indicators:

@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
 const navItems = [
+  { path: '/inversion', label: 'Inversión', icon: '📊' },
   { path: '/', label: 'Inicio', icon: '🏠' },
   { path: '/ganancias', label: 'Ganancias', icon: '💰' },
   { path: '/sistema', label: 'Sistema', icon: '⚙️' },

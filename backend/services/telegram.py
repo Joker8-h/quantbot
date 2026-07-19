@@ -68,3 +68,14 @@ def format_daily_summary(total_pnl: float, trades_today: int, win_rate: float) -
 
 def format_system_alert(message: str) -> str:
     return f"⚠️ <b>Sistema</b>\n{message}"
+
+
+def format_risk_alert(nivel: str, accion: str, razon: str, precio: float = None) -> str:
+    emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(nivel, "🟢")
+    precio_txt = f"\nPrecio: ${precio:,.2f}" if precio else ""
+    return (
+        f"{emoji} <b>Alerta de Riesgo</b>\n"
+        f"Nivel: {nivel.upper()}\n"
+        f"Acción: {accion}{precio_txt}\n"
+        f"🤖 {razon}"
+    )

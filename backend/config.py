@@ -16,6 +16,9 @@ class Config:
     WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "http://localhost:3001")
     WHATSAPP_PHONE = os.getenv("WHATSAPP_PHONE", "+573166575904")
 
+    # OpenAI (filtro de RIESGO, no predictor de precio)
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
     # Exchange
     DEFAULT_EXCHANGE = "binance"
 
