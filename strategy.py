@@ -11,23 +11,25 @@ class Strategy:
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
 
-        # Volume filter
-        cond_volume = df["volume"] > df["vol_avg"]
+        # Mean reversion: buy oversold in up-trend, sell overbought in down-trend
+        vol_high = df["volume"] > (df["vol_avg"] * 1.5)
 
-        # === LONG: identico al original ===
+        # LONG: uptrend but pulled back to oversold (RSI < 35), bounce
         cond_long = (
             (df["ema_fast"] > df["ema_slow"]) &
-            (df["rsi"] > self.rsi_threshold) &
-            (df["close"] > df["high"].shift(1)) &
-            cond_volume
+            (df["rsi"] < 35) &
+            (df["close"] > df["open"]) &  # bullish candle
+            (df["low"] <= df["ema_fast"] * 1.01) &  # near EMA support
+            vol_high
         )
 
-        # === SHORT: estricto (original) ===
+        # SHORT: downtrend but rallied to overbought (RSI > 65), drop
         cond_short = (
             (df["ema_fast"] < df["ema_slow"]) &
-            (df["rsi"] < 30) &
-            (df["close"] < df["low"].shift(1)) &
-            (df["volume"] > df["vol_avg"] * 2.0)
+            (df["rsi"] > 65) &
+            (df["close"] < df["open"]) &  # bearish candle
+            (df["high"] >= df["ema_fast"] * 0.99) &  # near EMA resistance
+            vol_high
         )
 
         df["signal"] = 0

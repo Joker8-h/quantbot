@@ -21,9 +21,13 @@ class TradingConfig:
     ema_fast: int = 20
     ema_slow: int = 50
     rsi_period: int = 14
-    rsi_threshold: int = 55
+    rsi_threshold: int = 50
     atr_period: int = 14
     volume_avg_period: int = 20
+
+    # Pullback strategy
+    pullback_window: int = 3  # Lookback para detectar pullback
+    bounce_threshold: float = 0.002  # 0.2% bounce minimum
 
     # Indicadores nuevos
     adx_period: int = 14
@@ -40,12 +44,12 @@ class TradingConfig:
 
     # Riesgo
     risk_per_trade: float = 0.005  # 0.5% del capital
-    rr_ratio: float = 2.5  # Risk/Reward 1:2.5 (mejor grid result)
-    atr_sl_multiplier: float = 2.5  # Stop Loss = 2.5 * ATR (mejor grid result)
+    rr_ratio: float = 2.0  # Risk/Reward 1:2
+    atr_sl_multiplier: float = 3.0  # Stop Loss = 3.0 * ATR
     max_open_positions: int = 2
 
-    # Trailing Stop
-    trail_atr_multiplier: float = 0.0  # 0 = trailing stop desactivado (original)
+    # Trailing Stop - ACTIVADO para proteger ganancias
+    trail_atr_multiplier: float = 1.0  # Trailing stop a 1.0 * ATR
 
     # Comisiones y slippage
     fee: float = 0.001  # 0.1% por operacion

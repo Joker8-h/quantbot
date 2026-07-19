@@ -132,43 +132,54 @@ class Backtester:
                     consecutive_losses = 0
                     open_positions.remove(pos)
 
-            # Nueva entrada
+            # Nueva entrada / cierre por senal
             can_trade = last_trade_time is None or \
                 (dt - last_trade_time).total_seconds() / 3600 >= self.min_bars_between
 
             vol_scale = row.get("vol_scale", 1.0)
 
-            if (can_trade
-                and len(open_positions) < self.max_positions
-                and row["signal"] != 0
-                and capital > 0):
+            signal = row["signal"]
+            # Solo long: senal 1 = entrar long, senal -1 o 0 = salir de long y quedarse plano
+            desired_long = (signal == 1)
 
-                signal = row["signal"]
-                side = "LONG" if signal == 1 else "SHORT"
-                atr_value = row["atr"]
+            if not desired_long:
+                for pos in open_positions[:]:
+                    if pos["side"] == "LONG":
+                        net_pnl = self._close_position(row, pos["entry_price"], pos["side"],
+                                                        pos["size"], "signal_exit")
+                        capital += net_pnl
+                        trades.append(self._make_trade(
+                            pos["entry_time"], dt, pos["entry_price"], None, pos["side"],
+                            pos["size"], net_pnl, "signal_exit"
+                        ))
+                        daily_pnl += net_pnl
+                        weekly_pnl += net_pnl
+                        consecutive_losses = consecutive_losses + 1 if net_pnl < 0 else 0
+                        open_positions.remove(pos)
+                        last_trade_time = dt
+            else:
+                if (can_trade
+                    and len(open_positions) < self.max_positions
+                    and capital > 0):
 
-                if side == "LONG":
+                    atr_value = row["atr"]
+
                     entry_price = row["close"] * (1 + self.slippage)
                     stop_price = self.risk_manager.calculate_stop_loss(entry_price, atr_value, "LONG")
                     stop_distance = entry_price - stop_price
                     take_price = self.risk_manager.calculate_take_profit(entry_price, stop_distance, "LONG")
-                else:
-                    entry_price = row["close"] * (1 - self.slippage)
-                    stop_price = self.risk_manager.calculate_stop_loss(entry_price, atr_value, "SHORT")
-                    stop_distance = stop_price - entry_price
-                    take_price = self.risk_manager.calculate_take_profit(entry_price, stop_distance, "SHORT")
 
-                position_size = self.risk_manager.calculate_position_size(
-                    capital, entry_price, stop_price, self.fee, self.slippage, vol_scale
-                )
+                    position_size = self.risk_manager.calculate_position_size(
+                        capital, entry_price, stop_price, self.fee, self.slippage, vol_scale
+                    )
 
-                if position_size > 0 and entry_price * position_size <= capital * 0.95:
-                    fee_cost = entry_price * position_size * self.fee
-                    capital -= fee_cost
-                    open_positions.append({
+                    if position_size > 0 and entry_price * position_size <= capital * 0.95:
+                        fee_cost = entry_price * position_size * self.fee
+                        capital -= fee_cost
+                        open_positions.append({
                         "entry_time": dt,
                         "entry_price": entry_price,
-                        "side": side,
+                        "side": "LONG",
                         "size": position_size,
                         "stop_price": stop_price,
                         "take_price": take_price,
