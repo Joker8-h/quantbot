@@ -39,7 +39,7 @@ class RiskFilter:
     def __init__(self, api_key: str = None, model: str = "gpt-4o-mini"):
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self.model = model
-        self.client = OpenAI(api_key=self.api_key) if self.api_key else None
+        self.client = OpenAI(api_key=self.api_key, timeout=10, max_retries=1) if self.api_key else None
         self._cache: Dict[str, Tuple[str, str]] = {}
 
     def _build_prompt(self, f: Dict) -> str:
