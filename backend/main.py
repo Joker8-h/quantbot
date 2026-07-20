@@ -47,6 +47,11 @@ def diag_binance():
     import urllib.request
     out = {}
     try:
+        ip = urllib.request.urlopen("https://api.ipify.org", timeout=8).read().decode("utf-8", "ignore")
+        out["egress_ip"] = ip
+    except Exception as e:
+        out["egress_ip_error"] = str(e)[:200]
+    try:
         r = urllib.request.urlopen(
             "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", timeout=8
         )
