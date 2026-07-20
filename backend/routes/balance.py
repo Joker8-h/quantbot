@@ -53,9 +53,9 @@ def get_balance(user: User = Depends(get_current_user), db: Session = Depends(ge
     )
     total_pnl = sum(t.pnl_usd or 0 for t in all_trades)
 
-    # Currency conversion
-    from config import config
-    rate = config.USD_TO_COP_RATE
+    # Currency conversion (tasa USD->COP en vivo con fallback)
+    from services.fx import usd_to_cop
+    rate = usd_to_cop()
     currency = user.currency_preference
 
     def convert(usd):
@@ -63,9 +63,35 @@ def get_balance(user: User = Depends(get_current_user), db: Session = Depends(ge
 
     symbol = "COP" if currency == "COP" else "USD"
 
+    # Balance real desde Binance si el usuario conecto su cuenta.
+    from models import ExchangeConnection
+    total_usd = snapshot.total_balance_usd if snapshot else 100.0
+    avail_usd = snapshot.available_usd if snapshot else 100.0
+    fuente_balance = "snapshot" if snapshot else "placeholder"
+
+    conn = (
+        db.query(ExchangeConnection)
+        .filter(ExchangeConnection.user_id == user.id, ExchangeConnection.is_active == True)
+        .first()
+    )
+    if conn:
+        try:
+            from services.crypto import descifrar
+            from services.binance import BinanceService
+            svc = BinanceService(
+                api_key=descifrar(conn.api_key_encrypted),
+                api_secret=descifrar(conn.api_secret_encrypted),
+            )
+            real = svc.balance_total_usdt()
+            total_usd = real["total_usdt"]
+            avail_usd = real["disponible_usdt"]
+            fuente_balance = "binance"
+        except Exception:
+            fuente_balance = "binance_no_disponible"
+
     return {
-        "total_balance": convert(snapshot.total_balance_usd if snapshot else 100.0),
-        "available": convert(snapshot.available_usd if snapshot else 100.0),
+        "total_balance": convert(total_usd),
+        "available": convert(avail_usd),
         "unrealized_pnl": convert(snapshot.unrealized_pnl_usd if snapshot else 0.0),
         "today_pnl": convert(today_pnl),
         "week_pnl": convert(week_pnl),
@@ -73,7 +99,8 @@ def get_balance(user: User = Depends(get_current_user), db: Session = Depends(ge
         "total_pnl": convert(total_pnl),
         "currency": currency,
         "symbol": symbol,
-        "usd_to_cop_rate": rate,
+        "usd_to_cop_rate": round(rate, 2),
+        "fuente_balance": fuente_balance,
     }
 
 

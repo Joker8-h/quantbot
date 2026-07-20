@@ -116,6 +116,31 @@ def desconectar_exchange(user: User = Depends(get_current_user), db: Session = D
     return {"ok": True, "mensaje": "Conexion eliminada"}
 
 
+@router.get("/exchange/balance")
+def balance_exchange(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Balance real de la cuenta conectada, valorado en USDT."""
+    conn = (
+        db.query(ExchangeConnection)
+        .filter(ExchangeConnection.user_id == user.id, ExchangeConnection.is_active == True)
+        .first()
+    )
+    if not conn:
+        return {"conectado": False, "total_usdt": 0.0, "disponible_usdt": 0.0, "detalle": []}
+
+    svc = BinanceService(
+        api_key=descifrar(conn.api_key_encrypted),
+        api_secret=descifrar(conn.api_secret_encrypted),
+    )
+    try:
+        real = svc.balance_total_usdt()
+        return {"conectado": True, **real}
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"No se pudo leer el balance de Binance (posible geo-bloqueo): {e}",
+        )
+
+
 @router.post("/exchange/test-buy")
 def prueba_compra(
     symbol: str = "BTC/USDT",

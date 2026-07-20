@@ -21,6 +21,18 @@ import ccxt
 from .crypto import descifrar
 
 
+def _proxies() -> dict:
+    """Proxy opcional para saltar el geo-bloqueo (datacenter US).
+
+    Se activa poniendo BINANCE_HTTP_PROXY (ej. http://user:pass@host:port).
+    Sin la variable, no se usa proxy y ccxt conecta directo.
+    """
+    proxy = os.getenv("BINANCE_HTTP_PROXY", "").strip()
+    if not proxy:
+        return {}
+    return {"httpProxy": proxy, "httpsProxy": proxy}
+
+
 class BinanceService:
     def __init__(self, api_key: str = "", api_secret: str = ""):
         self.api_key = api_key or os.getenv("BINANCE_API_KEY", "")
@@ -29,7 +41,9 @@ class BinanceService:
             "apiKey": self.api_key,
             "secret": self.api_secret,
             "enableRateLimit": True,
+            "timeout": 10000,
             "options": {"defaultType": "spot"},
+            **_proxies(),
         })
 
     # ------------------------------------------------------------------ #
@@ -38,7 +52,12 @@ class BinanceService:
     @classmethod
     def precio_publico(cls, symbol: str = "BTC/USDT") -> Optional[float]:
         """Precio actual sin API key (datos publicos de Binance)."""
-        ex = ccxt.binance({"enableRateLimit": True, "timeout": 5000, "options": {"defaultType": "spot"}})
+        ex = ccxt.binance({
+            "enableRateLimit": True,
+            "timeout": 5000,
+            "options": {"defaultType": "spot"},
+            **_proxies(),
+        })
         try:
             ticker = ex.fetch_ticker(symbol)
             return float(ticker["last"])
@@ -79,6 +98,42 @@ class BinanceService:
             return float(cuenta.get(moneda, {}).get("free", 0.0))
         except Exception:
             return 0.0
+
+    def balance_total_usdt(self) -> dict:
+        """Balance real de la cuenta valorado en USDT.
+
+        Suma todos los activos con saldo (free+used) multiplicados por su
+        precio en USDT. Devuelve total, disponible (free) y detalle.
+        Lanza excepcion si no hay acceso (ej. geo-bloqueo) para que el
+        endpoint decida el fallback.
+        """
+        cuenta = self.exchange.fetch_balance()
+        totales = cuenta.get("total", {}) or {}
+        libres = cuenta.get("free", {}) or {}
+
+        total_usdt = 0.0
+        libre_usdt = 0.0
+        detalle = []
+        for activo, cantidad in totales.items():
+            cantidad = float(cantidad or 0.0)
+            if cantidad <= 0:
+                continue
+            if activo in ("USDT", "BUSD", "USDC", "FDUSD"):
+                precio = 1.0
+            else:
+                precio = self.precio_publico(f"{activo}/USDT") or 0.0
+            valor = cantidad * precio
+            if valor <= 0:
+                continue
+            total_usdt += valor
+            libre_usdt += float(libres.get(activo, 0.0)) * precio
+            detalle.append({"activo": activo, "cantidad": cantidad, "valor_usdt": round(valor, 2)})
+
+        return {
+            "total_usdt": round(total_usdt, 2),
+            "disponible_usdt": round(libre_usdt, 2),
+            "detalle": sorted(detalle, key=lambda x: x["valor_usdt"], reverse=True),
+        }
 
     # ------------------------------------------------------------------ #
     # Ejecucion de ordenes
