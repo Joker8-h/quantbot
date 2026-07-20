@@ -16,6 +16,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+# Directorio persistente para estado DCA (volumen en Railway); ROOT en local.
+STATE_DIR = os.getenv("STATE_DIR", "") or ROOT
+os.makedirs(STATE_DIR, exist_ok=True)
+
 import importlib
 import importlib.util
 backend_config = importlib.import_module("backend.config").config
@@ -197,7 +201,7 @@ def estado_completo(symbol: str = "BTC/USDT", api_key: str = None,
     from datetime import datetime, timedelta
     proxima = (datetime.now() + timedelta(days=30)).strftime("%d de %B")
 
-    engine = DCAEngine(db_path=db_path or os.path.join(ROOT, "dca_state.json"))
+    engine = DCAEngine(db_path=db_path or os.path.join(STATE_DIR, "dca_state.json"))
     est = engine.estado(
         precio_actual=precio,
         riesgo=nivel,
@@ -238,7 +242,7 @@ def _estado_multi(symbols: list, api_key: str, db_path: str) -> dict:
         vivo = _precio_vivo(sym)
         precio = vivo if vivo else float(d2['close'].iloc[-1])
         nivel, razon, _ = evaluar_riesgo(d2, api_key)
-        engine = DCAEngine(db_path=db_path or os.path.join(ROOT, f"dca_state_{sym.replace('/', '_')}.json"))
+        engine = DCAEngine(db_path=db_path or os.path.join(STATE_DIR, f"dca_state_{sym.replace('/', '_')}.json"))
         est = engine.estado(
             precio_actual=precio,
             riesgo=nivel,

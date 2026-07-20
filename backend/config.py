@@ -2,9 +2,19 @@ import os
 from datetime import datetime, timezone
 
 
+def _normalizar_db_url(url: str) -> str:
+    """Railway entrega postgres://; SQLAlchemy 2.0 exige postgresql://."""
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql://", 1)
+    return url
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "quantbot-secret-key-change-in-production")
-    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./quantbot.db")
+    DATABASE_URL = _normalizar_db_url(os.getenv("DATABASE_URL", "sqlite:///./quantbot.db"))
+    # Directorio persistente para estado (DCA, riesgo). En Railway se monta
+    # un volumen y se apunta STATE_DIR ahi para no perder datos en cada deploy.
+    STATE_DIR = os.getenv("STATE_DIR", "")
     ALGORITHM = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 

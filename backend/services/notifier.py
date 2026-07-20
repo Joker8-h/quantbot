@@ -14,7 +14,9 @@ import asyncio
 import logging
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ESTADO_PATH = os.path.join(ROOT, "estado_riesgo.json")
+STATE_DIR = os.getenv("STATE_DIR", "") or ROOT
+os.makedirs(STATE_DIR, exist_ok=True)
+ESTADO_PATH = os.path.join(STATE_DIR, "estado_riesgo.json")
 
 logger = logging.getLogger(__name__)
 

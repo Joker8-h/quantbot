@@ -28,7 +28,11 @@ from risk_filter import ACCIONES, EMOJI
 
 router = APIRouter(prefix="/api", tags=["inversion"])
 
-DB_PATH = os.path.join(ROOT, "dca_state.json")
+# Directorio persistente para estado (volumen en Railway); ROOT en local.
+STATE = backend_config.STATE_DIR or ROOT
+os.makedirs(STATE, exist_ok=True)
+
+DB_PATH = os.path.join(STATE, "dca_state.json")
 
 
 @router.get("/portfolio")
@@ -40,7 +44,7 @@ def portfolio(symbol: str = Query("BTC/USDT"), modo: str = Query("conservador"),
     el portafolio multi-activo y la distribucion de exposicion.
     user_id aislada el estado DCA por usuario (multi-usuario).
     """
-    db_path = os.path.join(ROOT, f"dca_state_{user_id}.json") if user_id else DB_PATH
+    db_path = os.path.join(STATE, f"dca_state_{user_id}.json") if user_id else DB_PATH
     simbolos = None
     if modo == "experimental":
         # Modo Experimental: SOLO simulacion paper, sin dinero real
@@ -101,7 +105,7 @@ def dca_execute(symbol: str = Query("BTC/USDT"), forzar: bool = Query(False),
     """Ejecuta la compra DCA programada con el monto ajustado por riesgo.
     Solo se usa en modo conservador/moderado. NUNCA vende.
     """
-    db_path = os.path.join(ROOT, f"dca_state_{user_id}.json") if user_id else DB_PATH
+    db_path = os.path.join(STATE, f"dca_state_{user_id}.json") if user_id else DB_PATH
     r = estado_completo(symbol=symbol, api_key=backend_config.OPENAI_API_KEY, db_path=db_path)
     if r.get("error"):
         return r
@@ -117,7 +121,7 @@ def dca_execute(symbol: str = Query("BTC/USDT"), forzar: bool = Query(False),
 @router.post("/dca/pause")
 def dca_pause(pausado: bool = Query(True), user_id: str = Query(None)):
     """Pausa o reanuda manualmente las compras (el usuario decide)."""
-    db_path = os.path.join(ROOT, f"dca_state_{user_id}.json") if user_id else DB_PATH
+    db_path = os.path.join(STATE, f"dca_state_{user_id}.json") if user_id else DB_PATH
     engine = DCAEngine(db_path=db_path)
     engine.configurar(pausado_manual=pausado)
     return {"ok": True, "pausado_manual": pausado}
