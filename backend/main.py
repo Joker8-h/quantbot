@@ -38,6 +38,30 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/diag/binance")
+def diag_binance():
+    """Diagnostico: ¿es Binance alcanzable desde este datacenter?
+
+    Sirve para verificar el geo-bloqueo antes/despues de migrar de region.
+    """
+    import urllib.request
+    out = {}
+    try:
+        r = urllib.request.urlopen(
+            "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", timeout=8
+        )
+        out["binance_http_status"] = r.status
+        out["binance_body"] = r.read()[:120].decode("utf-8", "ignore")
+    except Exception as e:
+        out["binance_http_error"] = str(e)[:200]
+    try:
+        from services.binance import BinanceService
+        out["precio_publico"] = BinanceService.precio_publico("BTC/USDT")
+    except Exception as e:
+        out["precio_error"] = str(e)[:200]
+    return out
+
+
 # Serve frontend static files
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.normpath(os.path.join(BACKEND_DIR, "..", "static"))
