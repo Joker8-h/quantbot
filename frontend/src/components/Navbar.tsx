@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { getCurrency, setCurrency } from '../currency';
 
 const navItems = [
   { path: '/inversion', label: 'Inversión', icon: '📊' },
@@ -15,10 +16,16 @@ export default function Navbar() {
   const { user, logout, isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const currency = getCurrency();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const toggleCurrency = () => {
+    setCurrency(currency === 'USD' ? 'COP' : 'USD');
+    navigate(0); // refrescar para aplicar
   };
 
   return (
@@ -57,6 +64,13 @@ export default function Navbar() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={toggleCurrency}
+            className="px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+            title="Cambiar divisa"
+          >
+            {currency === 'USD' ? '💵 USD' : '💴 COP'}
+          </button>
           <span className="text-sm text-slate-400">{user?.name}</span>
           <button
             onClick={handleLogout}

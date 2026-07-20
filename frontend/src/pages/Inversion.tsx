@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
+import { formatMoney } from '../currency';
 
 interface ActivoData {
   symbol: string;
@@ -99,7 +100,7 @@ export default function Inversion() {
     return <div className="flex items-center justify-center h-64"><div className="text-slate-400">Cargando...</div></div>;
   }
 
-  const fmt = (v: number) => `$${v.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = (v: number) => formatMoney(v);
   const gananciaColor = (data.ganancia || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
 
   return (

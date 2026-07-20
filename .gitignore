@@ -35,3 +35,8 @@ dca_state.json
 ultimo_riesgo.json
 dca_state_test.json
 *.test.json
+
+# Local DCA state (per-user, not committed)
+dca_state*.json
+estado_riesgo.json
+# Frontend build artifact (built in Dockerfile)

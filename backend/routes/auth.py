@@ -12,6 +12,7 @@ class RegisterRequest(BaseModel):
     email: str
     name: str
     password: str
+    invite_token: str = None
 
 
 class LoginRequest(BaseModel):
@@ -39,6 +40,19 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    # Validar token de invitacion si se proporciona
+    if req.invite_token:
+        from datetime import datetime, timezone
+        inv = db.query(Invitation).filter(Invitation.token == req.invite_token).first()
+        if not inv:
+            raise HTTPException(status_code=400, detail="Invalid invitation token")
+        if inv.used:
+            raise HTTPException(status_code=400, detail="Invitation already used")
+        if inv.expires_at and inv.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="Invitation expired")
+        if inv.email.lower() != req.email.lower():
+            raise HTTPException(status_code=400, detail="Email does not match invitation")
+
     user = User(
         email=req.email,
         name=req.name,
@@ -48,6 +62,13 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Marcar invitacion como usada
+    if req.invite_token:
+        inv = db.query(Invitation).filter(Invitation.token == req.invite_token).first()
+        if inv:
+            inv.used = True
+            db.commit()
 
     token = create_access_token({"sub": user.id})
     return TokenResponse(

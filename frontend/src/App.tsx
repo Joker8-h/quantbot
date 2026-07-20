@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import Navbar from './components/Navbar';
@@ -11,6 +11,7 @@ import Cuenta from './pages/Cuenta';
 import Alertas from './pages/Alertas';
 import Admin from './pages/Admin';
 import Modos from './pages/Modos';
+import { fetchRate } from './currency';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -42,6 +43,9 @@ function AppRoutes() {
 }
 
 export default function App() {
+  useEffect(() => {
+    fetchRate();
+  }, []);
   return (
     <BrowserRouter>
       <AuthProvider>

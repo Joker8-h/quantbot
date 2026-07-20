@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 import { useAuth } from '../AuthContext';
+import { formatMoney } from '../currency';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface Stats {
@@ -49,7 +50,7 @@ export default function Ganancias() {
   }
 
   const formatCurrency = (value: number) => {
-    return `USD ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return formatMoney(value);
   };
 
   // Prepare monthly data for chart
@@ -162,8 +163,8 @@ export default function Ganancias() {
                       {trade.side}
                     </span>
                   </td>
-                  <td className="py-3 text-sm">${trade.entry_price?.toLocaleString()}</td>
-                  <td className="py-3 text-sm">${trade.exit_price?.toLocaleString()}</td>
+                  <td className="py-3 text-sm">{formatMoney(trade.entry_price || 0)}</td>
+                  <td className="py-3 text-sm">{formatMoney(trade.exit_price || 0)}</td>
                   <td className="py-3 text-sm text-slate-400">{trade.exit_reason}</td>
                   <td className={`py-3 text-sm text-right font-medium ${(trade.pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                     {(trade.pnl_usd || 0) >= 0 ? '+' : ''}{formatCurrency(trade.pnl_usd || 0)}

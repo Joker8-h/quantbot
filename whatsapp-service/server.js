@@ -16,6 +16,7 @@ function initClient() {
         authStrategy: new LocalAuth({ dataPath: './auth_data' }),
         puppeteer: {
             headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
         },
     });
