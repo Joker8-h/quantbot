@@ -52,26 +52,65 @@ def _precio_vivo(symbol: str) -> float:
 
 
 def _cargar_1d(symbol: str = "BTC/USDT"):
-    """Carga datos 1D desde CSV local o los descarga."""
+    """Carga datos 1D para el filtro de riesgo.
+
+    Prioridad:
+      1. CSV 1D local cacheado (rapido).
+      2. Descarga directa en timeframe 1d desde Binance (pequeno y rapido,
+         ~400 velas, con timeout para no colgar el endpoint).
+      3. Fallback: recorte del CSV 1h local si existe.
+    """
+    from datetime import datetime, timedelta
+
+    path_1d = os.path.join(ROOT, "data", "raw", f"{symbol.replace('/', '_')}_1d.csv")
+    if os.path.exists(path_1d):
+        df = pd.read_csv(path_1d)
+        return _normalizar_1d(df)
+
+    # Descarga directa 1d (evita el CSV 1h gigante)
+    try:
+        import ccxt
+        ex = ccxt.binance({
+            "enableRateLimit": True,
+            "options": {"defaultType": "spot"},
+            "timeout": 15000,
+        })
+        since = int((datetime.now() - timedelta(days=400)).timestamp() * 1000)
+        ohlcv = ex.fetch_ohlcv(symbol, "1d", since=since, limit=420)
+        if ohlcv:
+            df = pd.DataFrame(ohlcv, columns=["datetime", "open", "high", "low", "close", "volume"])
+            df["datetime"] = pd.to_datetime(df["datetime"], unit="ms")
+            try:
+                df.to_csv(path_1d, index=False)
+            except Exception:
+                pass
+            return _normalizar_1d(df)
+    except Exception as e:
+        print(f"[investment] descarga 1d fallo para {symbol}: {e}")
+
+    # Fallback: recortar CSV 1h local si esta presente
     path = os.path.join(ROOT, "data", "raw", f"{symbol.replace('/', '_')}_1h.csv")
-    if not os.path.exists(path):
-        c = DataCollector()
-        df = c.fetch_ohlcv(symbol, "1h", "2019-01-01", "2026-07-18")
-        if df.empty:
-            return pd.DataFrame()
-        c.save_csv(df, symbol, "1h")
-    else:
+    if os.path.exists(path):
         df = pd.read_csv(path)
-    df['datetime'] = pd.to_datetime(df['datetime'])
+        df['datetime'] = pd.to_datetime(df['datetime'])
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = df[col].astype(float)
+        out = pd.DataFrame({
+            "open": df.set_index('datetime')['open'].resample('1D').first(),
+            "high": df.set_index('datetime')['high'].resample('1D').max(),
+            "low": df.set_index('datetime')['low'].resample('1D').min(),
+            "close": df.set_index('datetime')['close'].resample('1D').last(),
+            "volume": df.set_index('datetime')['volume'].resample('1D').sum(),
+        }).dropna().reset_index()
+        return Indicators(config=ROOT_CONFIG).add_all(out)
+
+    return pd.DataFrame()
+
+
+def _normalizar_1d(df: pd.DataFrame) -> pd.DataFrame:
     for col in ['open', 'high', 'low', 'close', 'volume']:
         df[col] = df[col].astype(float)
-    o = df.set_index('datetime')['open'].resample('1D').first()
-    h = df.set_index('datetime')['high'].resample('1D').max()
-    l = df.set_index('datetime')['low'].resample('1D').min()
-    c = df.set_index('datetime')['close'].resample('1D').last()
-    v = df.set_index('datetime')['volume'].resample('1D').sum()
-    out = pd.DataFrame({'open': o, 'high': h, 'low': l, 'close': c, 'volume': v}).dropna().reset_index()
-    return Indicators(config=ROOT_CONFIG).add_all(out)
+    return Indicators(config=ROOT_CONFIG).add_all(df)
 
 
 def calcular_features_riesgo(d2: pd.DataFrame) -> dict:
