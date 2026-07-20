@@ -38,7 +38,7 @@ class BinanceService:
     @classmethod
     def precio_publico(cls, symbol: str = "BTC/USDT") -> Optional[float]:
         """Precio actual sin API key (datos publicos de Binance)."""
-        ex = ccxt.binance({"enableRateLimit": True, "options": {"defaultType": "spot"}})
+        ex = ccxt.binance({"enableRateLimit": True, "timeout": 5000, "options": {"defaultType": "spot"}})
         try:
             ticker = ex.fetch_ticker(symbol)
             return float(ticker["last"])

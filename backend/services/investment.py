@@ -40,15 +40,52 @@ except Exception:
     _TIENE_BINANCE = False
 
 
-def _precio_vivo(symbol: str) -> float:
-    """Intenta precio en vivo de Binance; devuelve None si falla."""
-    if not _TIENE_BINANCE:
+# Mapa simbolo -> id de CoinGecko (funciona desde datacenters US, Binance no)
+_COINGECKO_IDS = {
+    "BTC/USDT": "bitcoin",
+    "ETH/USDT": "ethereum",
+    "SOL/USDT": "solana",
+    "BTC/USD": "bitcoin",
+    "ETH/USD": "ethereum",
+    "SOL/USD": "solana",
+}
+
+
+def _precio_coingecko(symbol: str) -> float:
+    """Precio en vivo desde CoinGecko (no geo-bloqueado en Railway US)."""
+    coin_id = _COINGECKO_IDS.get(symbol)
+    if not coin_id:
         return None
     try:
-        p = BinanceService.precio_publico(symbol)
-        return float(p) if p else None
-    except Exception:
+        import urllib.request
+        import json as _json
+        url = (
+            "https://api.coingecko.com/api/v3/simple/price"
+            f"?ids={coin_id}&vs_currencies=usd"
+        )
+        with urllib.request.urlopen(url, timeout=8) as r:
+            data = _json.loads(r.read())
+        precio = data.get(coin_id, {}).get("usd")
+        return float(precio) if precio else None
+    except Exception as e:
+        print(f"[investment] CoinGecko fallo para {symbol}: {e}")
         return None
+
+
+def _precio_vivo(symbol: str) -> float:
+    """Precio en vivo con fallback: Binance -> CoinGecko -> None.
+
+    En Railway (datacenter US) Binance esta geo-bloqueado, por eso se
+    intenta CoinGecko como respaldo antes de rendirse.
+    """
+    if _TIENE_BINANCE:
+        try:
+            p = BinanceService.precio_publico(symbol)
+            if p:
+                return float(p)
+        except Exception:
+            pass
+    return _precio_coingecko(symbol)
 
 
 def _cargar_1d(symbol: str = "BTC/USDT"):
