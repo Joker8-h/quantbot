@@ -31,26 +31,14 @@ from data_collector import DataCollector
 
 
 def _cargar_1d(symbol: str = "BTC/USDT") -> pd.DataFrame:
-    """Carga datos 1D desde CSV local o los descarga (igual que investment)."""
-    path = os.path.join(ROOT, "data", "raw", f"{symbol.replace('/', '_')}_1h.csv")
-    if not os.path.exists(path):
-        c = DataCollector()
-        df = c.fetch_ohlcv(symbol, "1h", "2019-01-01", "2026-07-18")
-        if df.empty:
-            return pd.DataFrame()
-        c.save_csv(df, symbol, "1h")
-    else:
-        df = pd.read_csv(path)
-    df['datetime'] = pd.to_datetime(df['datetime'])
-    for col in ['open', 'high', 'low', 'close', 'volume']:
-        df[col] = df[col].astype(float)
-    o = df.set_index('datetime')['open'].resample('1D').first()
-    h = df.set_index('datetime')['high'].resample('1D').max()
-    l = df.set_index('datetime')['low'].resample('1D').min()
-    c = df.set_index('datetime')['close'].resample('1D').last()
-    v = df.set_index('datetime')['volume'].resample('1D').sum()
-    out = pd.DataFrame({'open': o, 'high': h, 'low': l, 'close': c, 'volume': v}).dropna().reset_index()
-    return Indicators(config=ROOT_CONFIG).add_all(out)
+    """Carga datos 1D reutilizando la logica de investment.
+
+    Usa el CSV diario cacheado (incluido en la imagen) con fallback a
+    descarga directa 1d. Evita cargar el CSV 1h gigante que no se sube a
+    Railway (Binance esta geo-bloqueado en el datacenter US).
+    """
+    from services.investment import _cargar_1d as _cargar_1d_inv
+    return _cargar_1d_inv(symbol)
 
 
 def simular_estrategia(symbol: str = "BTC/USDT", capital_inicial: float = 1000.0,
