@@ -11,6 +11,7 @@ import Cuenta from './pages/Cuenta';
 import Alertas from './pages/Alertas';
 import Admin from './pages/Admin';
 import Modos from './pages/Modos';
+import Paper from './pages/Paper';
 import { fetchRate } from './currency';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -36,6 +37,7 @@ function AppRoutes() {
       <Route path="/sistema" element={<ProtectedRoute><Sistema /></ProtectedRoute>} />
       <Route path="/cuenta" element={<ProtectedRoute><Cuenta /></ProtectedRoute>} />
       <Route path="/modos" element={<ProtectedRoute><Modos /></ProtectedRoute>} />
+      <Route path="/paper" element={<ProtectedRoute><Paper /></ProtectedRoute>} />
       <Route path="/alertas" element={<ProtectedRoute><Alertas /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
     </Routes>

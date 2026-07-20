@@ -11,7 +11,9 @@ export default function Cuenta() {
   // Binance
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [testnet, setTestnet] = useState(true);
   const [conectado, setConectado] = useState(false);
+  const [modoConexion, setModoConexion] = useState<string>('');
   const [saldoUsdt, setSaldoUsdt] = useState<number | null>(null);
   const [conectando, setConectando] = useState(false);
   const [probando, setProbando] = useState(false);
@@ -25,6 +27,7 @@ export default function Cuenta() {
     try {
       const r = await api.get('/exchange/status');
       setConectado(!!r.data.conectado);
+      setModoConexion(r.data.modo || '');
     } catch {
       setConectado(false);
     }
@@ -52,7 +55,7 @@ export default function Cuenta() {
         api_key: apiKey,
         api_secret: apiSecret,
         exchange: 'binance',
-        paper: true,
+        testnet,
       });
       setConectado(true);
       setSaldoUsdt(r.data.saldo_usdt);
@@ -160,15 +163,58 @@ export default function Cuenta() {
       <div className="bg-[#1e293b] p-6 rounded-xl border border-[#334155]">
         <h2 className="text-lg font-semibold mb-4">Conexión con Binance</h2>
 
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-400 mb-4">
-          ⚠️ Crea la API Key en Binance con permisos de <b>lectura + Spot Trading</b> y
-          <b> SIN retiro (withdraw)</b>. El bot nunca retira fondos.
-        </div>
+        {!conectado && (
+          <>
+            {/* Selector Testnet / Real */}
+            <div className="flex gap-3 mb-4">
+              <button
+                onClick={() => setTestnet(true)}
+                className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  testnet ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                🧪 Práctica (Testnet)
+              </button>
+              <button
+                onClick={() => setTestnet(false)}
+                className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  !testnet ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                💵 Real
+              </button>
+            </div>
+
+            {testnet ? (
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-sm text-blue-300 mb-4 space-y-1">
+                <p className="font-semibold text-blue-200">Cómo obtener tus llaves de práctica (dinero ficticio):</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Entra a <a href="https://testnet.binance.vision/" target="_blank" rel="noreferrer" className="underline">testnet.binance.vision</a> e inicia sesión con GitHub.</li>
+                  <li>Pulsa <b>Generate HMAC_SHA256 Key</b>.</li>
+                  <li>Copia la <b>API Key</b> y el <b>Secret</b> (el secret solo se muestra una vez).</li>
+                  <li>Pégalos abajo. El saldo ficticio se crea solo.</li>
+                </ol>
+              </div>
+            ) : (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-400 mb-4">
+                ⚠️ Crea la API Key en Binance con permisos de <b>lectura + Spot Trading</b> y
+                <b> SIN retiro (withdraw)</b>. El bot nunca retira fondos.
+              </div>
+            )}
+          </>
+        )}
 
         {conectado ? (
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-emerald-400">
               <span>✅</span> Cuenta conectada y cifrada
+              {modoConexion && (
+                <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
+                  modoConexion === 'testnet' ? 'bg-blue-500/20 text-blue-300' : 'bg-amber-500/20 text-amber-300'
+                }`}>
+                  {modoConexion === 'testnet' ? '🧪 Testnet' : '💵 Real'}
+                </span>
+              )}
             </div>
             {saldoUsdt !== null && (
               <div className="text-sm text-slate-300">Saldo disponible: ${saldoUsdt.toFixed(2)} USDT</div>

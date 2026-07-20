@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from database import engine, Base
-from routes import auth, balance, alerts, admin, investment, exchange, config as config_routes
+from routes import auth, balance, alerts, admin, investment, exchange, paper, config as config_routes
 import os
 import logging
 
@@ -55,7 +55,70 @@ app.include_router(alerts.router)
 app.include_router(admin.router)
 app.include_router(investment.router)
 app.include_router(exchange.router)
+app.include_router(paper.router)
 app.include_router(config_routes.router)
+
+
+# --------------------------------------------------------------------- #
+# Scheduler: motor de paper trading (testnet) + resumen diario a Telegram
+# --------------------------------------------------------------------- #
+_scheduler = None
+
+
+def _job_tick():
+    try:
+        from services.paper_engine import ejecutar_tick
+        res = ejecutar_tick()
+        logger.info(f"[scheduler] tick paper: {res}")
+    except Exception as e:
+        logger.error(f"[scheduler] tick fallo: {e}")
+
+
+def _job_reporte():
+    try:
+        import asyncio
+        from services.daily_report import enviar_reporte_diario
+        res = asyncio.run(enviar_reporte_diario())
+        logger.info(f"[scheduler] reporte diario: {res}")
+    except Exception as e:
+        logger.error(f"[scheduler] reporte fallo: {e}")
+
+
+@app.on_event("startup")
+def _iniciar_scheduler():
+    global _scheduler
+    if os.getenv("PAPER_ENGINE_ENABLED", "true").strip().lower() not in ("1", "true", "yes", "on", "si"):
+        logger.info("[scheduler] deshabilitado por PAPER_ENGINE_ENABLED")
+        return
+    if _scheduler is not None:
+        return
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        tick_min = int(os.getenv("PAPER_TICK_MINUTOS", "15"))
+        # Hora del resumen: 13:00 UTC = 8:00 AM Colombia
+        rep_hora = int(os.getenv("PAPER_REPORTE_HORA_UTC", "13"))
+        rep_min = int(os.getenv("PAPER_REPORTE_MIN_UTC", "0"))
+        sch = BackgroundScheduler(timezone="UTC")
+        sch.add_job(_job_tick, "interval", minutes=tick_min, id="paper_tick",
+                    max_instances=1, coalesce=True)
+        sch.add_job(_job_reporte, "cron", hour=rep_hora, minute=rep_min, id="paper_reporte",
+                    max_instances=1, coalesce=True)
+        sch.start()
+        _scheduler = sch
+        logger.info(f"[scheduler] activo (tick={tick_min}min, reporte={rep_hora:02d}:{rep_min:02d} UTC)")
+    except Exception as e:
+        logger.error(f"[scheduler] no se pudo iniciar: {e}")
+
+
+@app.on_event("shutdown")
+def _detener_scheduler():
+    global _scheduler
+    if _scheduler is not None:
+        try:
+            _scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+        _scheduler = None
 
 
 @app.get("/api/health")
