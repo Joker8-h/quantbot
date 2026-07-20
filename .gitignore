@@ -20,6 +20,10 @@ data/raw/*.csv
 *.csv
 *.png
 
+# Excepcion: los CSV diarios (1d) son pequenos y deben ir en la imagen
+# para que el filtro de riesgo funcione en Railway (Binance esta geo-bloqueado).
+!data/raw/*_1d.csv
+
 # Debug files
 debug*.py
 
