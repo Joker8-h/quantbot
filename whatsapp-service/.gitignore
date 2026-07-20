@@ -1,3 +1,5 @@
 node_modules/
 auth_data/
 package-lock.json
+.wwebjs_cache/
+.wwebjs_auth/

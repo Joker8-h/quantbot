@@ -68,8 +68,19 @@ app.get('/qr', (req, res) => {
     }
 });
 
+// Middleware de autenticacion para endpoints de envio.
+// Protege /send y /alert con una clave compartida (WHATSAPP_API_KEY).
+// El QR (/, /qr, /health) queda publico para poder escanearlo.
+function requireApiKey(req, res, next) {
+    const expected = process.env.WHATSAPP_API_KEY;
+    if (!expected) return next(); // sin clave configurada: no bloquea (dev)
+    const provided = req.get('x-api-key');
+    if (provided && provided === expected) return next();
+    return res.status(401).json({ error: 'unauthorized' });
+}
+
 // Send message
-app.post('/send', async (req, res) => {
+app.post('/send', requireApiKey, async (req, res) => {
     if (!isReady) {
         return res.status(503).json({ error: 'WhatsApp not ready' });
     }
@@ -94,7 +105,7 @@ app.post('/send', async (req, res) => {
 });
 
 // Send to predefined group/contact (for QuantBot alerts)
-app.post('/alert', async (req, res) => {
+app.post('/alert', requireApiKey, async (req, res) => {
     if (!isReady) {
         return res.status(503).json({ error: 'WhatsApp not ready' });
     }

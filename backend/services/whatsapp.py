@@ -16,10 +16,14 @@ async def send_whatsapp(message: str, phone: str = None) -> bool:
 
     target_phone = phone or config.WHATSAPP_PHONE
     payload = {"message": message, "phone": target_phone}
+    headers = {}
+    api_key = getattr(config, "WHATSAPP_API_KEY", None)
+    if api_key:
+        headers["x-api-key"] = api_key
 
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{service_url}/send", json=payload, timeout=15)
+            resp = await client.post(f"{service_url}/send", json=payload, headers=headers, timeout=15)
             if resp.status_code == 200:
                 logger.info("WhatsApp message sent")
                 return True
