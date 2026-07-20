@@ -33,10 +33,15 @@ def _proxies() -> dict:
     return {"httpProxy": proxy, "httpsProxy": proxy}
 
 
+def _env_testnet() -> bool:
+    return os.getenv("BINANCE_TESTNET", "false").strip().lower() in ("1", "true", "yes", "si", "on")
+
+
 class BinanceService:
-    def __init__(self, api_key: str = "", api_secret: str = ""):
+    def __init__(self, api_key: str = "", api_secret: str = "", testnet: Optional[bool] = None):
         self.api_key = api_key or os.getenv("BINANCE_API_KEY", "")
         self.api_secret = api_secret or os.getenv("BINANCE_API_SECRET", "")
+        self.testnet = _env_testnet() if testnet is None else bool(testnet)
         self.exchange = ccxt.binance({
             "apiKey": self.api_key,
             "secret": self.api_secret,
@@ -45,6 +50,18 @@ class BinanceService:
             "options": {"defaultType": "spot"},
             **_proxies(),
         })
+        # IMPORTANTE: activar sandbox ANTES de cualquier llamada a la API.
+        if self.testnet:
+            self.exchange.set_sandbox_mode(True)
+
+    def precio(self, symbol: str = "BTC/USDT") -> Optional[float]:
+        """Precio actual usando ESTE exchange (respeta testnet/mainnet)."""
+        try:
+            ticker = self.exchange.fetch_ticker(symbol)
+            return float(ticker["last"])
+        except Exception:
+            # En testnet algunos pares tienen poca data; caemos al precio publico real.
+            return self.precio_publico(symbol)
 
     # ------------------------------------------------------------------ #
     # Sin credenciales: solo lectura publica (precio en vivo)
@@ -75,14 +92,24 @@ class BinanceService:
         """
         try:
             self.exchange.check_required_credentials()
+            cuenta = self.exchange.fetch_balance()
+            # En testnet no hay riesgo real: no revisamos permiso de retiro.
+            if self.testnet:
+                return {
+                    "ok": True,
+                    "testnet": True,
+                    "tiene_lectura": True,
+                    "tiene_spot_trading": True,
+                    "tiene_retiro": False,
+                    "saldo_usdt": float(cuenta.get("USDT", {}).get("free", 0.0)),
+                }
             # Llamada ligera que requiere autenticacion
             perms = self.exchange.fetch_permissions() if hasattr(self.exchange, "fetch_permissions") else []
-            cuenta = self.exchange.fetch_balance()
-            tiene_spot = True
             # Binance: permisos estan en la respuesta de la API de permisos.
             # Si no esta disponible, asumimos lectura+spot si la llamada arriba funciono.
             return {
                 "ok": True,
+                "testnet": False,
                 "permisos": perms,
                 "tiene_lectura": True,
                 "tiene_spot_trading": ("SPOT" in perms) if perms else True,
@@ -121,7 +148,7 @@ class BinanceService:
             if activo in ("USDT", "BUSD", "USDC", "FDUSD"):
                 precio = 1.0
             else:
-                precio = self.precio_publico(f"{activo}/USDT") or 0.0
+                precio = self.precio(f"{activo}/USDT") or 0.0
             valor = cantidad * precio
             if valor <= 0:
                 continue
@@ -141,14 +168,32 @@ class BinanceService:
     def ejecutar_compra(self, symbol: str, monto_usd: float, paper: bool = True) -> dict:
         """Compra en spot.
 
-        paper=True -> NO envia orden real; devuelve lo que habria pasado.
-        paper=False -> envia orden de mercado real (SOLO si el usuario
-        lo habilita explicitamente y acepta el riesgo).
+        - Si el servicio esta en TESTNET: envia la orden al Spot Testnet de
+          Binance (dinero FICTICIO, ejercita todo el flujo real del codigo).
+        - paper=True (sin testnet): NO envia orden; simulacion local.
+        - paper=False (sin testnet): envia orden de mercado REAL (dinero real).
         """
-        precio = self.precio_publico(symbol)
+        precio = self.precio(symbol)
         if not precio:
             return {"ok": False, "error": "No se pudo obtener precio"}
         cantidad = round(monto_usd / precio, 8)
+
+        if self.testnet:
+            try:
+                orden = self.exchange.create_market_buy_order(symbol, cantidad)
+                return {
+                    "ok": True,
+                    "testnet": True,
+                    "paper": True,
+                    "symbol": symbol,
+                    "orden_id": orden.get("id"),
+                    "monto_usd": monto_usd,
+                    "precio": precio,
+                    "cantidad": cantidad,
+                    "mensaje": "Orden enviada al TESTNET de Binance (dinero ficticio)",
+                }
+            except Exception as e:
+                return {"ok": False, "testnet": True, "error": str(e)}
 
         if paper:
             return {
@@ -171,6 +216,51 @@ class BinanceService:
                 "cantidad": cantidad,
                 "precio": precio,
                 "mensaje": "Orden de mercado REAL enviada",
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def ejecutar_venta(self, symbol: str, cantidad: float, paper: bool = True) -> dict:
+        """Venta en spot. Mismas reglas que ejecutar_compra."""
+        precio = self.precio(symbol)
+        cantidad = round(float(cantidad), 8)
+
+        if self.testnet:
+            try:
+                orden = self.exchange.create_market_sell_order(symbol, cantidad)
+                return {
+                    "ok": True,
+                    "testnet": True,
+                    "paper": True,
+                    "symbol": symbol,
+                    "orden_id": orden.get("id"),
+                    "precio": precio,
+                    "cantidad": cantidad,
+                    "mensaje": "Venta enviada al TESTNET de Binance (dinero ficticio)",
+                }
+            except Exception as e:
+                return {"ok": False, "testnet": True, "error": str(e)}
+
+        if paper:
+            return {
+                "ok": True,
+                "paper": True,
+                "symbol": symbol,
+                "precio": precio,
+                "cantidad": cantidad,
+                "mensaje": "VENTA SIMULADA (paper) - no se movio dinero real",
+            }
+
+        try:
+            orden = self.exchange.create_market_sell_order(symbol, cantidad)
+            return {
+                "ok": True,
+                "paper": False,
+                "symbol": symbol,
+                "orden_id": orden.get("id"),
+                "precio": precio,
+                "cantidad": cantidad,
+                "mensaje": "Orden de venta REAL enviada",
             }
         except Exception as e:
             return {"ok": False, "error": str(e)}

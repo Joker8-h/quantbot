@@ -42,6 +42,7 @@ class ExchangeConnection(Base):
     exchange = Column(String(50), nullable=False)
     api_key_encrypted = Column(Text, nullable=False)
     api_secret_encrypted = Column(Text, nullable=False)
+    testnet = Column(Boolean, default=True)  # True = Spot Testnet (dinero ficticio)
     is_active = Column(Boolean, default=True)
     last_sync = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

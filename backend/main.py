@@ -12,6 +12,31 @@ logger = logging.getLogger(__name__)
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+
+def _migrar_columnas():
+    """Migracion ligera e idempotente: agrega columnas nuevas si faltan.
+
+    create_all no altera tablas existentes, asi que agregamos a mano las
+    columnas nuevas (ej. exchange_connections.testnet) sin perder datos.
+    """
+    from sqlalchemy import text, inspect
+    try:
+        insp = inspect(engine)
+        cols = [c["name"] for c in insp.get_columns("exchange_connections")]
+        if "testnet" not in cols:
+            es_pg = "postgresql" in str(engine.url)
+            default = "true" if es_pg else "1"
+            with engine.begin() as conn:
+                conn.execute(text(
+                    f"ALTER TABLE exchange_connections ADD COLUMN testnet BOOLEAN DEFAULT {default}"
+                ))
+            logger.info("Migracion: columna testnet agregada a exchange_connections")
+    except Exception as e:
+        logger.warning(f"Migracion de columnas omitida: {e}")
+
+
+_migrar_columnas()
+
 app = FastAPI(title="QuantBot API", version="1.0.0")
 
 # CORS

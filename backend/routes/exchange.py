@@ -28,7 +28,7 @@ class ConexionInput(BaseModel):
     api_key: str
     api_secret: str
     exchange: str = "binance"
-    paper: bool = True  # Por defecto, solo pruebas simuladas
+    testnet: bool = True  # Por defecto, Spot Testnet (dinero ficticio)
 
 
 @router.post("/exchange/connect")
@@ -37,18 +37,25 @@ def conectar_exchange(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Valida y guarda (cifrado) la conexion de Binance del usuario."""
+    """Valida y guarda (cifrado) la conexion de Binance del usuario.
+
+    Por defecto testnet=True: las claves deben ser del Spot Testnet de
+    Binance (testnet.binance.vision). Para dinero real, testnet=False y las
+    claves de la cuenta real (sin permiso de retiro).
+    """
     if not data.api_key or not data.api_secret:
         raise HTTPException(status_code=400, detail="API key y secret son requeridos")
 
-    svc = BinanceService(api_key=data.api_key, api_secret=data.api_secret)
+    svc = BinanceService(api_key=data.api_key, api_secret=data.api_secret, testnet=data.testnet)
     validacion = svc.validar_conexion()
     if not validacion.get("ok"):
+        entorno = "TESTNET" if data.testnet else "REAL"
         raise HTTPException(
             status_code=400,
-            detail=f"Credenciales invalidas o sin acceso: {validacion.get('error')}",
+            detail=f"Credenciales {entorno} invalidas o sin acceso: {validacion.get('error')}",
         )
-    if validacion.get("tiene_retiro"):
+    # En cuenta real exigimos que NO tenga permiso de retiro (seguridad).
+    if not data.testnet and validacion.get("tiene_retiro"):
         raise HTTPException(
             status_code=400,
             detail="La API tiene permiso de RETIRO. Por seguridad, genera una API solo lectura + spot trade sin retiro.",
@@ -63,6 +70,7 @@ def conectar_exchange(
     if existente:
         existente.api_key_encrypted = cifrar(data.api_key)
         existente.api_secret_encrypted = cifrar(data.api_secret)
+        existente.testnet = data.testnet
         existente.is_active = True
     else:
         existente = ExchangeConnection(
@@ -70,6 +78,7 @@ def conectar_exchange(
             exchange=data.exchange,
             api_key_encrypted=cifrar(data.api_key),
             api_secret_encrypted=cifrar(data.api_secret),
+            testnet=data.testnet,
         )
         db.add(existente)
     db.commit()
@@ -77,11 +86,14 @@ def conectar_exchange(
     return {
         "ok": True,
         "exchange": data.exchange,
+        "testnet": data.testnet,
         "tiene_spot_trading": validacion.get("tiene_spot_trading"),
         "tiene_retiro": validacion.get("tiene_retiro"),
         "saldo_usdt": validacion.get("saldo_usdt", 0.0),
-        "paper": data.paper,
-        "mensaje": "Cuenta conectada (cifrada). Operando en modo PAPER por defecto.",
+        "mensaje": (
+            "Cuenta TESTNET conectada (dinero ficticio)." if data.testnet
+            else "Cuenta REAL conectada (cifrada, sin permiso de retiro)."
+        ),
     }
 
 
@@ -98,6 +110,8 @@ def estado_exchange(user: User = Depends(get_current_user), db: Session = Depend
     return {
         "conectado": True,
         "exchange": conn.exchange,
+        "testnet": bool(getattr(conn, "testnet", True)),
+        "modo": "testnet" if getattr(conn, "testnet", True) else "real",
         "tiene_api_key": bool(conn.api_key_encrypted),
         "ultima_sync": conn.last_sync.isoformat() if conn.last_sync else None,
     }
@@ -130,10 +144,11 @@ def balance_exchange(user: User = Depends(get_current_user), db: Session = Depen
     svc = BinanceService(
         api_key=descifrar(conn.api_key_encrypted),
         api_secret=descifrar(conn.api_secret_encrypted),
+        testnet=bool(getattr(conn, "testnet", True)),
     )
     try:
         real = svc.balance_total_usdt()
-        return {"conectado": True, **real}
+        return {"conectado": True, "testnet": svc.testnet, **real}
     except Exception as e:
         raise HTTPException(
             status_code=502,
@@ -165,6 +180,32 @@ def prueba_compra(
     svc = BinanceService(
         api_key=descifrar(conn.api_key_encrypted),
         api_secret=descifrar(conn.api_secret_encrypted),
+        testnet=bool(getattr(conn, "testnet", True)),
     )
     resultado = svc.ejecutar_compra(symbol, monto_usd, paper=paper)
     return resultado
+
+
+@router.post("/exchange/test-sell")
+def prueba_venta(
+    symbol: str = "BTC/USDT",
+    cantidad: float = 0.0001,
+    paper: bool = True,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ejecuta una venta de prueba. En testnet usa dinero ficticio."""
+    conn = (
+        db.query(ExchangeConnection)
+        .filter(ExchangeConnection.user_id == user.id, ExchangeConnection.is_active == True)
+        .first()
+    )
+    if not conn:
+        raise HTTPException(status_code=400, detail="Conecta tu cuenta de Binance primero")
+
+    svc = BinanceService(
+        api_key=descifrar(conn.api_key_encrypted),
+        api_secret=descifrar(conn.api_secret_encrypted),
+        testnet=bool(getattr(conn, "testnet", True)),
+    )
+    return svc.ejecutar_venta(symbol, cantidad, paper=paper)
