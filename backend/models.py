@@ -66,6 +66,14 @@ class Trade(Base):
     exit_time = Column(DateTime)
     exit_reason = Column(String(50))
     status = Column(String(20), default="open")  # open, closed
+    strategy = Column(String(50), default="confluencia_v1")
+
+    # Gestion de la posicion mientras esta abierta
+    stop_loss = Column(Float)
+    take_profit = Column(Float)
+    max_price = Column(Float)  # maximo alcanzado, base del trailing stop
+    entry_order_id = Column(String(50))
+    exit_order_id = Column(String(50))
 
 
 class BalanceSnapshot(Base):

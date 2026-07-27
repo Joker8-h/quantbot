@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from database import engine, Base
-from routes import auth, balance, alerts, admin, investment, exchange, paper, config as config_routes
+from routes import auth, balance, alerts, admin, investment, exchange, live, config as config_routes
 import os
 import logging
 
@@ -22,15 +22,32 @@ def _migrar_columnas():
     from sqlalchemy import text, inspect
     try:
         insp = inspect(engine)
+        es_pg = "postgresql" in str(engine.url)
+
         cols = [c["name"] for c in insp.get_columns("exchange_connections")]
         if "testnet" not in cols:
-            es_pg = "postgresql" in str(engine.url)
             default = "true" if es_pg else "1"
             with engine.begin() as conn:
                 conn.execute(text(
                     f"ALTER TABLE exchange_connections ADD COLUMN testnet BOOLEAN DEFAULT {default}"
                 ))
             logger.info("Migracion: columna testnet agregada a exchange_connections")
+
+        if "trades" in insp.get_table_names():
+            trade_cols = [c["name"] for c in insp.get_columns("trades")]
+            nuevas = {
+                "strategy": "VARCHAR(50) DEFAULT 'confluencia_v1'",
+                "stop_loss": "FLOAT",
+                "take_profit": "FLOAT",
+                "max_price": "FLOAT",
+                "entry_order_id": "VARCHAR(50)",
+                "exit_order_id": "VARCHAR(50)",
+            }
+            with engine.begin() as conn:
+                for nombre, tipo in nuevas.items():
+                    if nombre not in trade_cols:
+                        conn.execute(text(f"ALTER TABLE trades ADD COLUMN {nombre} {tipo}"))
+                        logger.info(f"Migracion: columna {nombre} agregada a trades")
     except Exception as e:
         logger.warning(f"Migracion de columnas omitida: {e}")
 
@@ -55,21 +72,21 @@ app.include_router(alerts.router)
 app.include_router(admin.router)
 app.include_router(investment.router)
 app.include_router(exchange.router)
-app.include_router(paper.router)
+app.include_router(live.router)
 app.include_router(config_routes.router)
 
 
 # --------------------------------------------------------------------- #
-# Scheduler: motor de paper trading (testnet) + resumen diario a Telegram
+# Scheduler: motor de trading REAL + resumen diario a Telegram
 # --------------------------------------------------------------------- #
 _scheduler = None
 
 
 def _job_tick():
     try:
-        from services.paper_engine import ejecutar_tick
+        from services.live_engine import ejecutar_tick
         res = ejecutar_tick()
-        logger.info(f"[scheduler] tick paper: {res}")
+        logger.info(f"[scheduler] tick live: {res}")
     except Exception as e:
         logger.error(f"[scheduler] tick fallo: {e}")
 
@@ -87,21 +104,21 @@ def _job_reporte():
 @app.on_event("startup")
 def _iniciar_scheduler():
     global _scheduler
-    if os.getenv("PAPER_ENGINE_ENABLED", "true").strip().lower() not in ("1", "true", "yes", "on", "si"):
-        logger.info("[scheduler] deshabilitado por PAPER_ENGINE_ENABLED")
+    if os.getenv("LIVE_ENGINE_ENABLED", "true").strip().lower() not in ("1", "true", "yes", "on", "si"):
+        logger.info("[scheduler] deshabilitado por LIVE_ENGINE_ENABLED")
         return
     if _scheduler is not None:
         return
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
-        tick_min = int(os.getenv("PAPER_TICK_MINUTOS", "15"))
+        tick_min = int(os.getenv("LIVE_TICK_MINUTOS", "15"))
         # Hora del resumen: 13:00 UTC = 8:00 AM Colombia
-        rep_hora = int(os.getenv("PAPER_REPORTE_HORA_UTC", "13"))
-        rep_min = int(os.getenv("PAPER_REPORTE_MIN_UTC", "0"))
+        rep_hora = int(os.getenv("REPORTE_HORA_UTC", "13"))
+        rep_min = int(os.getenv("REPORTE_MIN_UTC", "0"))
         sch = BackgroundScheduler(timezone="UTC")
-        sch.add_job(_job_tick, "interval", minutes=tick_min, id="paper_tick",
+        sch.add_job(_job_tick, "interval", minutes=tick_min, id="live_tick",
                     max_instances=1, coalesce=True)
-        sch.add_job(_job_reporte, "cron", hour=rep_hora, minute=rep_min, id="paper_reporte",
+        sch.add_job(_job_reporte, "cron", hour=rep_hora, minute=rep_min, id="reporte_diario",
                     max_instances=1, coalesce=True)
         sch.start()
         _scheduler = sch

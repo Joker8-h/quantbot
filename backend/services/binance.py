@@ -13,9 +13,12 @@ intentar adivinar el mercado.
 """
 import os
 import sys
+import logging
 from typing import Optional
 
 import ccxt
+
+logger = logging.getLogger(__name__)
 
 # Permitir importar crypto desde el mismo paquete
 from .crypto import descifrar
@@ -161,6 +164,121 @@ class BinanceService:
             "disponible_usdt": round(libre_usdt, 2),
             "detalle": sorted(detalle, key=lambda x: x["valor_usdt"], reverse=True),
         }
+
+    # ------------------------------------------------------------------ #
+    # Datos de mercado para la estrategia (siempre mainnet, sin credenciales)
+    # ------------------------------------------------------------------ #
+    @classmethod
+    def velas_publicas(cls, symbol: str = "BTC/USDT", timeframe: str = "15m",
+                       limite: int = 300) -> list:
+        """Velas OHLCV del mercado REAL, para calcular la senal.
+
+        Aunque la orden se ejecute en una cuenta con poca liquidez, la senal
+        SIEMPRE se calcula sobre datos de mainnet: es lo unico representativo
+        del mercado real.
+        """
+        ex = ccxt.binance({
+            "enableRateLimit": True,
+            "timeout": 10000,
+            "options": {"defaultType": "spot"},
+            **_proxies(),
+        })
+        try:
+            return ex.fetch_ohlcv(symbol, timeframe=timeframe, limit=limite)
+        except Exception as e:
+            logger.warning(f"[OHLCV_FAIL] {symbol} {timeframe}: {e}")
+            return []
+
+    # ------------------------------------------------------------------ #
+    # Ejecucion verificada: devuelve el fill REAL de Binance, nunca estimado
+    # ------------------------------------------------------------------ #
+    def _extraer_fill(self, orden: dict, symbol: str, precio_ref: float) -> dict:
+        verificado = True
+        precio_fill = orden.get("average") or orden.get("price")
+        cantidad = orden.get("filled") or orden.get("amount")
+
+        if not precio_fill or not cantidad:
+            try:
+                fresca = self.exchange.fetch_order(orden.get("id"), symbol)
+                precio_fill = fresca.get("average") or fresca.get("price") or precio_fill
+                cantidad = fresca.get("filled") or fresca.get("amount") or cantidad
+                orden = fresca
+            except Exception as e:
+                logger.warning(f"[FILL_REFETCH_FAIL] {symbol} {orden.get('id')}: {e}")
+
+        if not precio_fill:
+            precio_fill = precio_ref
+            verificado = False
+        if not cantidad:
+            cantidad = 0.0
+            verificado = False
+
+        precio_fill = float(precio_fill)
+        cantidad = float(cantidad)
+
+        comision = 0.0
+        base = symbol.split("/")[0].upper()
+        fee = orden.get("fee") or {}
+        if fee and fee.get("cost") is not None:
+            costo = float(fee["cost"])
+            moneda = (fee.get("currency") or "").upper()
+            comision = costo * precio_fill if moneda == base else costo
+        elif orden.get("fees"):
+            for f in orden["fees"]:
+                costo = float(f.get("cost") or 0.0)
+                moneda = (f.get("currency") or "").upper()
+                comision += costo * precio_fill if moneda == base else costo
+        else:
+            comision = precio_fill * cantidad * 0.001  # estimacion taker 0.1%
+            verificado = False
+
+        return {
+            "ok": True,
+            "orden_id": orden.get("id"),
+            "precio_fill": precio_fill,
+            "cantidad": cantidad,
+            "comision_usd": round(comision, 6),
+            "notional_usd": round(precio_fill * cantidad, 4),
+            "verificado": verificado,
+        }
+
+    def comprar_verificado(self, symbol: str, monto_usd: float) -> dict:
+        """Compra REAL a mercado por importe en USDT. Devuelve el fill real."""
+        precio_ref = self.precio(symbol) or 0.0
+        try:
+            monto = round(float(monto_usd), 2)
+            try:
+                orden = self.exchange.create_order(
+                    symbol, "market", "buy", None, None, {"quoteOrderQty": monto}
+                )
+            except Exception:
+                if precio_ref <= 0:
+                    raise
+                cant = self.exchange.amount_to_precision(symbol, monto / precio_ref)
+                orden = self.exchange.create_market_buy_order(symbol, cant)
+            return self._extraer_fill(orden, symbol, precio_ref)
+        except Exception as e:
+            logger.error(f"[COMPRA_FAIL] {symbol} ${monto_usd}: {e}")
+            return {"ok": False, "error": str(e)}
+
+    def vender_verificado(self, symbol: str, cantidad: float) -> dict:
+        """Vende REAL a mercado EXACTAMENTE la cantidad indicada (nunca la cartera completa)."""
+        precio_ref = self.precio(symbol) or 0.0
+        base = symbol.split("/")[0]
+        try:
+            libre = self.saldo(base)
+            cant = min(float(cantidad), libre) if libre > 0 else float(cantidad)
+            try:
+                cant = float(self.exchange.amount_to_precision(symbol, cant))
+            except Exception:
+                cant = round(cant, 6)
+            if cant <= 0:
+                return {"ok": False, "error": f"sin saldo de {base} para vender"}
+            orden = self.exchange.create_market_sell_order(symbol, cant)
+            return self._extraer_fill(orden, symbol, precio_ref)
+        except Exception as e:
+            logger.error(f"[VENTA_FAIL] {symbol} {cantidad}: {e}")
+            return {"ok": False, "error": str(e)}
 
     # ------------------------------------------------------------------ #
     # Ejecucion de ordenes

@@ -28,7 +28,7 @@ class ConexionInput(BaseModel):
     api_key: str
     api_secret: str
     exchange: str = "binance"
-    testnet: bool = True  # Por defecto, Spot Testnet (dinero ficticio)
+    testnet: bool = False  # Por defecto, cuenta REAL (no hay modo simulado)
 
 
 @router.post("/exchange/connect")
@@ -160,52 +160,42 @@ def balance_exchange(user: User = Depends(get_current_user), db: Session = Depen
 def prueba_compra(
     symbol: str = "BTC/USDT",
     monto_usd: float = 10.0,
-    paper: bool = True,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Ejecuta una compra de prueba. Por defecto PAPER (simulado).
-
-    Para pruebas reales usa monto_usd pequeño (ej. $10) y paper=false solo
-    si entiendes el riesgo. El sistema NUNCA retira fondos.
-    """
+    """Compra real de prueba (round-trip) para validar que las credenciales
+    y el flujo de ordenes funcionan. No hay modo simulado: compra y vende
+    de inmediato al precio de mercado, y el costo es el de las comisiones
+    reales (normalmente unos centavos)."""
     conn = (
         db.query(ExchangeConnection)
-        .filter(ExchangeConnection.user_id == user.id, ExchangeConnection.is_active == True)
+        .filter(ExchangeConnection.user_id == user.id, ExchangeConnection.is_active == True,
+                ExchangeConnection.testnet == False)
         .first()
     )
     if not conn:
-        raise HTTPException(status_code=400, detail="Conecta tu cuenta de Binance primero")
+        raise HTTPException(status_code=400, detail="Conecta tu cuenta REAL de Binance primero")
 
     svc = BinanceService(
         api_key=descifrar(conn.api_key_encrypted),
         api_secret=descifrar(conn.api_secret_encrypted),
-        testnet=bool(getattr(conn, "testnet", True)),
+        testnet=False,
     )
-    resultado = svc.ejecutar_compra(symbol, monto_usd, paper=paper)
-    return resultado
+    compra = svc.comprar_verificado(symbol, monto_usd)
+    if not compra.get("ok"):
+        return compra
 
+    venta = svc.vender_verificado(symbol, compra["cantidad"])
+    costo_total = compra["comision_usd"] + (venta.get("comision_usd") or 0.0)
+    pnl = None
+    if venta.get("ok"):
+        pnl = round((venta["precio_fill"] - compra["precio_fill"]) * compra["cantidad"] - costo_total, 6)
 
-@router.post("/exchange/test-sell")
-def prueba_venta(
-    symbol: str = "BTC/USDT",
-    cantidad: float = 0.0001,
-    paper: bool = True,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Ejecuta una venta de prueba. En testnet usa dinero ficticio."""
-    conn = (
-        db.query(ExchangeConnection)
-        .filter(ExchangeConnection.user_id == user.id, ExchangeConnection.is_active == True)
-        .first()
-    )
-    if not conn:
-        raise HTTPException(status_code=400, detail="Conecta tu cuenta de Binance primero")
-
-    svc = BinanceService(
-        api_key=descifrar(conn.api_key_encrypted),
-        api_secret=descifrar(conn.api_secret_encrypted),
-        testnet=bool(getattr(conn, "testnet", True)),
-    )
-    return svc.ejecutar_venta(symbol, cantidad, paper=paper)
+    return {
+        "ok": True,
+        "compra": compra,
+        "venta": venta,
+        "comision_total_usd": round(costo_total, 6),
+        "pnl_round_trip_usd": pnl,
+        "mensaje": "Compra + venta reales ejecutadas para validar la conexion.",
+    }

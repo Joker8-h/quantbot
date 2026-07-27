@@ -1,19 +1,12 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 
-interface Hoy {
-  ganancia: number;
-  perdida: number;
-  neto: number;
-  operaciones: number;
-  abiertas: number;
-  promedio: number;
-}
-
 interface PosicionAbierta {
   symbol: string;
   entry_price: number;
   quantity: number;
+  stop_loss: number | null;
+  take_profit: number | null;
   entry_time: string | null;
 }
 
@@ -31,24 +24,26 @@ interface Trade {
 }
 
 interface Estado {
-  conectado_testnet: boolean;
+  conectado_real: boolean;
   is_running: boolean;
-  symbol: string;
-  monto_usd: number;
+  live_trading_enabled_env: boolean;
+  estrategia: string;
+  min_score_confluencia: number;
+  riesgo_por_trade_pct: number;
   max_trades_dia: number;
-  max_perdida_pct_dia: number;
   last_trade_time: string | null;
-  last_signal: string | null;
   total_pnl_usd: number;
+  today_pnl_usd: number;
   total_operaciones: number;
-  hoy: Hoy;
+  operaciones_ganadas: number;
+  win_rate: number | null;
   posicion_abierta: PosicionAbierta | null;
 }
 
 const money = (n: number | null | undefined) =>
   n === null || n === undefined ? '—' : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function Paper() {
+export default function Motor() {
   const [estado, setEstado] = useState<Estado | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +53,7 @@ export default function Paper() {
   const cargar = async () => {
     try {
       const [e, t] = await Promise.all([
-        api.get('/paper/status'),
+        api.get('/live/status'),
         api.get('/trades?limit=20'),
       ]);
       setEstado(e.data);
@@ -81,7 +76,7 @@ export default function Paper() {
     setBusy(true);
     setMsg('');
     try {
-      const r = await api.post(estado.is_running ? '/paper/stop' : '/paper/start');
+      const r = await api.post(estado.is_running ? '/live/stop' : '/live/start');
       setMsg(r.data.mensaje || '');
       await cargar();
     } catch (err: any) {
@@ -95,23 +90,9 @@ export default function Paper() {
     setBusy(true);
     setMsg('');
     try {
-      const r = await api.post('/paper/tick');
-      const res = r.data.resultado;
-      setMsg(`Ciclo ejecutado: ${res.accion} — ${res.razon}`);
+      await api.post('/live/tick');
+      setMsg('Ciclo ejecutado.');
       await cargar();
-    } catch (err: any) {
-      setMsg(err.response?.data?.detail || 'Error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const reporte = async () => {
-    setBusy(true);
-    setMsg('');
-    try {
-      const r = await api.post('/paper/report');
-      setMsg(r.data.ok ? 'Resumen enviado a Telegram ✅' : 'No se pudo enviar');
     } catch (err: any) {
       setMsg(err.response?.data?.detail || 'Error');
     } finally {
@@ -124,110 +105,95 @@ export default function Paper() {
   }
 
   const running = estado?.is_running;
-  const neto = estado?.hoy.neto ?? 0;
+  const liveEnv = estado?.live_trading_enabled_env;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">🧪 Modo Paper Trading</h1>
+        <h1 className="text-2xl font-bold">💵 Motor de Trading Real</h1>
         <div
           className={`flex items-center gap-2 px-4 py-2 rounded-full ${
             running ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-600/30 text-slate-400'
           }`}
         >
           <span className={`w-2 h-2 rounded-full ${running ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></span>
-          {running ? 'Activo' : 'Pausado'}
+          {running ? 'Activo' : 'Apagado'}
         </div>
       </div>
 
       <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-400">
-        💡 Dinero <b>ficticio</b> (Spot Testnet de Binance). Ideal para practicar sin riesgo.
-        Las estrategias activas no han demostrado ventaja histórica: esto es educativo.
+        ⚠️ Dinero <b>REAL</b> de tu cuenta de Binance. No hay simulación: cada operación mueve tu saldo verdadero.
+        {!liveEnv && (
+          <div className="mt-1">
+            El interruptor <code>LIVE_TRADING_ENABLED</code> del servidor está en <b>false</b>: el motor evalúa
+            señales pero no envía ninguna orden hasta que se active en Railway.
+          </div>
+        )}
       </div>
 
-      {!estado?.conectado_testnet && (
+      {!estado?.conectado_real && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-sm text-red-300">
-          No tienes una cuenta <b>Testnet</b> conectada. Ve a <b>Cuenta → Conexión con Binance</b>,
-          elige <b>Práctica (Testnet)</b> y pega tus llaves de testnet.binance.vision.
+          No tienes una cuenta REAL conectada. Ve a <b>Cuenta → Conexión con Binance</b> y pega tus llaves.
         </div>
       )}
 
-      {/* Metricas del dia */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
-          <div className="text-sm text-slate-400">Ganancia hoy</div>
-          <div className="text-xl font-bold mt-1 text-emerald-400">{money(estado?.hoy.ganancia)}</div>
-        </div>
-        <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
-          <div className="text-sm text-slate-400">Pérdida hoy</div>
-          <div className="text-xl font-bold mt-1 text-red-400">{money(estado?.hoy.perdida)}</div>
-        </div>
-        <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
-          <div className="text-sm text-slate-400">Neto hoy</div>
-          <div className={`text-xl font-bold mt-1 ${neto >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {money(neto)}
+          <div className="text-sm text-slate-400">PnL hoy</div>
+          <div className={`text-xl font-bold mt-1 ${(estado?.today_pnl_usd ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {money(estado?.today_pnl_usd)}
           </div>
         </div>
         <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
-          <div className="text-sm text-slate-400">Operaciones hoy</div>
-          <div className="text-xl font-bold mt-1">{estado?.hoy.operaciones}</div>
-        </div>
-      </div>
-
-      {/* Resumen general */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
-          <div className="text-sm text-slate-400">P&L total</div>
-          <div className={`text-lg font-medium mt-1 ${(estado?.total_pnl_usd ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+          <div className="text-sm text-slate-400">PnL total</div>
+          <div className={`text-xl font-bold mt-1 ${(estado?.total_pnl_usd ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             {money(estado?.total_pnl_usd)}
           </div>
         </div>
         <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
-          <div className="text-sm text-slate-400">Total operaciones</div>
-          <div className="text-lg font-medium mt-1">{estado?.total_operaciones}</div>
+          <div className="text-sm text-slate-400">Operaciones</div>
+          <div className="text-xl font-bold mt-1">{estado?.total_operaciones ?? 0}</div>
         </div>
         <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
-          <div className="text-sm text-slate-400">Promedio/op hoy</div>
-          <div className="text-lg font-medium mt-1">{money(estado?.hoy.promedio)}</div>
-        </div>
-        <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
-          <div className="text-sm text-slate-400">Última señal</div>
-          <div className="text-lg font-medium mt-1">{estado?.last_signal || '—'}</div>
+          <div className="text-sm text-slate-400">Win rate</div>
+          <div className="text-xl font-bold mt-1">{estado?.win_rate !== null && estado?.win_rate !== undefined ? `${estado.win_rate}%` : '—'}</div>
         </div>
       </div>
 
-      {/* Posicion abierta */}
       {estado?.posicion_abierta && (
         <div className="bg-[#1e293b] p-6 rounded-xl border border-emerald-600/40">
           <h2 className="text-lg font-semibold mb-3">Posición abierta</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <div className="text-slate-400">Par</div>
               <div className="font-medium mt-1">{estado.posicion_abierta.symbol}</div>
             </div>
             <div>
-              <div className="text-slate-400">Precio de entrada</div>
+              <div className="text-slate-400">Entrada</div>
               <div className="font-medium mt-1">{money(estado.posicion_abierta.entry_price)}</div>
             </div>
             <div>
-              <div className="text-slate-400">Cantidad</div>
-              <div className="font-medium mt-1">{estado.posicion_abierta.quantity}</div>
+              <div className="text-slate-400">Stop loss</div>
+              <div className="font-medium mt-1 text-red-400">{money(estado.posicion_abierta.stop_loss)}</div>
+            </div>
+            <div>
+              <div className="text-slate-400">Take profit</div>
+              <div className="font-medium mt-1 text-emerald-400">{money(estado.posicion_abierta.take_profit)}</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Controles */}
       <div className="bg-[#1e293b] p-6 rounded-xl border border-[#334155] space-y-4">
         <div className="flex flex-wrap gap-3">
           <button
             onClick={toggle}
-            disabled={busy || !estado?.conectado_testnet}
+            disabled={busy || !estado?.conectado_real}
             className={`px-5 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 ${
               running ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
             }`}
           >
-            {busy ? 'Procesando...' : running ? 'Pausar motor' : 'Activar motor'}
+            {busy ? 'Procesando...' : running ? 'Apagar motor' : 'Encender motor (dinero real)'}
           </button>
           <button
             onClick={tickAhora}
@@ -236,22 +202,15 @@ export default function Paper() {
           >
             Ejecutar ciclo ahora
           </button>
-          <button
-            onClick={reporte}
-            disabled={busy}
-            className="px-5 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium disabled:opacity-50"
-          >
-            Enviar resumen a Telegram
-          </button>
         </div>
         {msg && <div className="text-sm text-emerald-400">{msg}</div>}
         <div className="text-xs text-slate-500">
-          Par: {estado?.symbol} · Compra: {money(estado?.monto_usd)} · Límite diario: {estado?.max_trades_dia} ops /
-          −{estado?.max_perdida_pct_dia}%
+          Estrategia: {estado?.estrategia} · Confluencia mínima: {estado?.min_score_confluencia}/6 ·
+          Riesgo/operación: {((estado?.riesgo_por_trade_pct ?? 0) * 100).toFixed(1)}% ·
+          Máx {estado?.max_trades_dia} ops/día
         </div>
       </div>
 
-      {/* Historial */}
       <div className="bg-[#1e293b] p-6 rounded-xl border border-[#334155]">
         <h2 className="text-lg font-semibold mb-4">Últimas operaciones</h2>
         {trades.length === 0 ? (

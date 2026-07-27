@@ -63,15 +63,16 @@ def get_balance(user: User = Depends(get_current_user), db: Session = Depends(ge
 
     symbol = "COP" if currency == "COP" else "USD"
 
-    # Balance real desde Binance si el usuario conecto su cuenta.
+    # Balance SIEMPRE real desde Binance. Sin placeholder ni dinero ficticio.
     from models import ExchangeConnection
-    total_usd = snapshot.total_balance_usd if snapshot else 100.0
-    avail_usd = snapshot.available_usd if snapshot else 100.0
-    fuente_balance = "snapshot" if snapshot else "placeholder"
+    total_usd = 0.0
+    avail_usd = 0.0
+    fuente_balance = "sin_conexion"
 
     conn = (
         db.query(ExchangeConnection)
-        .filter(ExchangeConnection.user_id == user.id, ExchangeConnection.is_active == True)
+        .filter(ExchangeConnection.user_id == user.id, ExchangeConnection.is_active == True,
+                ExchangeConnection.testnet == False)
         .first()
     )
     if conn:
@@ -81,6 +82,7 @@ def get_balance(user: User = Depends(get_current_user), db: Session = Depends(ge
             svc = BinanceService(
                 api_key=descifrar(conn.api_key_encrypted),
                 api_secret=descifrar(conn.api_secret_encrypted),
+                testnet=False,
             )
             real = svc.balance_total_usdt()
             total_usd = real["total_usdt"]
