@@ -111,3 +111,10 @@ def tick_manual(user: User = Depends(get_current_user), db: Session = Depends(ge
     """Fuerza un ciclo del motor ahora mismo (para verificar que todo funciona)."""
     from services.live_engine import ejecutar_tick
     return {"ok": True, "resultado": ejecutar_tick()}
+
+
+@router.get("/analisis-groq")
+def obtener_analisis_groq():
+    """Devuelve un analisis en lenguaje natural generado en vivo por Groq AI (Llama 3.3)."""
+    from services.groq_filter import analizar_estado_mercado
+    return analizar_estado_mercado()

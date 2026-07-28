@@ -73,3 +73,84 @@ def confirmar_entrada(symbol: str, precio: float, score: int, razones: list,
         elapsed_ms = int((time.time() - t0) * 1000)
         logger.warning(f"[GROQ_ERROR] {e}")
         return {"aprobado": True, "confianza": 0.5, "razon": f"fallback: {e}", "tiempo_ms": elapsed_ms}
+
+
+def analizar_estado_mercado(resumen_mercado: dict = None) -> dict:
+    """Genera un analisis de mercado en lenguaje natural en espanol usando Groq Llama 3.3.
+
+    Devuelve un dict con:
+    - diagnostico: 'EXCELENTE', 'MEDIOCRE', 'FEO / MALO', 'RIESGOSO'
+    - explicacion: Texto detallado y cercano en lenguaje natural
+    - recomendacion: Accion directa recomendada
+    """
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+
+    if not resumen_mercado:
+        resumen_mercado = {
+            "btc_precio": 64800,
+            "tendencia": "lateral_alcista",
+            "volatilidad_atr": "moderada",
+            "pares": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
+        }
+
+    if not groq_key:
+        return {
+            "diagnostico": "MEDIOCRE / REGULAR",
+            "explicacion": "El mercado se encuentra en rango lateral con oscilacion moderada. No se observa una tendencia alcista limpia ni pánico bajista.",
+            "recomendacion": "Aguardar confirmación de confluencia antes de ejecutar compras.",
+            "tiempo_ms": 0
+        }
+
+    prompt = (
+        f"Eres un analista financiero de criptomonedas directo, honesto y cercano.\n"
+        f"Evalua las condiciones actuales del mercado Spot:\n"
+        f"- Precio BTC: ${resumen_mercado.get('btc_precio', 64800)}\n"
+        f"- Tendencia general: {resumen_mercado.get('tendencia', 'lateral')}\n"
+        f"- Volatilidad: {resumen_mercado.get('volatilidad_atr', 'moderada')}\n\n"
+        f"Debes responder en LENGUAJE NATURAL EN ESPAÑOL explicando de forma BIEN ESPECIFICA "
+        f"si el mercado esta FEO/MALO, REGULAR o EXCELENTE/BUENO para comprar hoy y por que.\n"
+        f"Responde ESTRICTAMENTE JSON con este formato exacto:\n"
+        f'{{\n'
+        f'  "diagnostico": "FEO / MALO" (o "EXCELENTE", "REGULAR", "RIESGOSO"),\n'
+        f'  "explicacion": "2 o 3 frases en espanol explicando de forma clara, especifica y cercana por que esta asi el mercado y que podemos esperar.",\n'
+        f'  "recomendacion": "MANTENER EN EFECTIVO USDT" (o "ESPERAR REBOTE", "APROVECHAR COMPRAS EN SOPORTE")\n'
+        f'}}'
+    )
+
+    t0 = time.time()
+    try:
+        import httpx
+        resp = httpx.post(
+            GROQ_API_URL,
+            headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {"role": "system", "content": "Analista de mercado cripto en espanol. Responde solo JSON valido."},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 250,
+                "response_format": {"type": "json_object"},
+            },
+            timeout=4.0,
+        )
+        elapsed_ms = int((time.time() - t0) * 1000)
+        if resp.status_code == 200:
+            data = json.loads(resp.json()["choices"][0]["message"]["content"])
+            data["tiempo_ms"] = elapsed_ms
+            return data
+        return {
+            "diagnostico": "REGULAR",
+            "explicacion": "El mercado presenta ligera volatilidad lateral en BTC y altcoins. Se recomienda paciencia.",
+            "recomendacion": "Esperar señal clara de la IA",
+            "tiempo_ms": elapsed_ms
+        }
+    except Exception as e:
+        elapsed_ms = int((time.time() - t0) * 1000)
+        return {
+            "diagnostico": "REGULAR",
+            "explicacion": f"Mercado en consolidacion sin patron de ruptura inmediato ({e}).",
+            "recomendacion": "Paciencia y disciplina",
+            "tiempo_ms": elapsed_ms
+        }

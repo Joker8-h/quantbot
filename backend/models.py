@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Boolean, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, String, Boolean, Float, DateTime, ForeignKey, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
 
@@ -120,4 +120,25 @@ class SystemStatus(Base):
     total_pnl_usd = Column(Float, default=0.0)
     today_pnl_usd = Column(Float, default=0.0)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class SignalLog(Base):
+    """Registro de cada evaluacion de senal del motor (para auditar por que
+    entro o no entro). No mueve dinero: es la caja negra del bot."""
+    __tablename__ = "signal_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    symbol = Column(String(20), nullable=False)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    action = Column(String(10), nullable=False)  # buy, hold
+    precio = Column(Float)
+    confianza = Column(Float)
+    atr = Column(Float)
+    votos_buy = Column(Integer)
+    votos_sell = Column(Integer)
+    estrategia_buy = Column(Text)   # JSON con las razones de confluencia
+    razon_final = Column(Text)
+    ejecutado = Column(Boolean, default=False)
+    razon_no_ejecutado = Column(Text)
 

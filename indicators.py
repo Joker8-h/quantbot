@@ -101,6 +101,76 @@ class Indicators:
             "bb_width": width,
         }, index=df.index)
 
+    def calculate_supertrend(self, df: pd.DataFrame, period: int = 10, multiplier: float = 3.0) -> pd.DataFrame:
+        """SuperTrend indicator for dynamic trend tracking."""
+        hl2 = (df["high"] + df["low"]) / 2
+        atr = self.calculate_atr(df, period)
+        
+        upper_band = hl2 + (multiplier * atr)
+        lower_band = hl2 - (multiplier * atr)
+        
+        supertrend = pd.Series(index=df.index, dtype=float)
+        direction = pd.Series(index=df.index, dtype=int)
+        
+        if len(df) == 0:
+            return pd.DataFrame({"supertrend": supertrend, "supertrend_dir": direction}, index=df.index)
+            
+        supertrend.iloc[0] = upper_band.iloc[0]
+        direction.iloc[0] = -1
+        
+        for i in range(1, len(df)):
+            close = df["close"].iloc[i]
+            close_prev = df["close"].iloc[i-1]
+            
+            ub_curr = upper_band.iloc[i]
+            ub_prev = upper_band.iloc[i-1]
+            final_upper = ub_curr if ub_curr < ub_prev or close_prev < ub_prev else ub_prev
+            
+            lb_curr = lower_band.iloc[i]
+            lb_prev = lower_band.iloc[i-1]
+            final_lower = lb_curr if lb_curr > lb_prev or close_prev > lb_prev else lb_prev
+            
+            if direction.iloc[i-1] == -1:
+                if close > final_upper:
+                    direction.iloc[i] = 1
+                    supertrend.iloc[i] = final_lower
+                else:
+                    direction.iloc[i] = -1
+                    supertrend.iloc[i] = final_upper
+            else:
+                if close < final_lower:
+                    direction.iloc[i] = -1
+                    supertrend.iloc[i] = final_upper
+                else:
+                    direction.iloc[i] = 1
+                    supertrend.iloc[i] = final_lower
+        
+        return pd.DataFrame({
+            "supertrend": supertrend,
+            "supertrend_dir": direction,
+        }, index=df.index)
+
+    def calculate_vwap(self, df: pd.DataFrame) -> pd.Series:
+        """Volume Weighted Average Price (VWAP)."""
+        tp = (df["high"] + df["low"] + df["close"]) / 3
+        vol_sum = df["volume"].cumsum().replace(0, 1.0)
+        vwap = (tp * df["volume"]).cumsum() / vol_sum
+        return vwap
+
+    def calculate_keltner_channel(self, df: pd.DataFrame, ema_period: int = 20, atr_multiplier: float = 2.0) -> pd.DataFrame:
+        """Keltner Channel indicator."""
+        ema = self.calculate_ema(df, ema_period)
+        atr = self.calculate_atr(df, ema_period)
+        
+        upper = ema + (atr_multiplier * atr)
+        lower = ema - (atr_multiplier * atr)
+        
+        return pd.DataFrame({
+            "kc_upper": upper,
+            "kc_middle": ema,
+            "kc_lower": lower,
+        }, index=df.index)
+
     def add_all(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df["ema_fast"] = self.calculate_ema(df, self.ema_fast)
@@ -119,6 +189,15 @@ class Indicators:
         df["bb_middle"] = bb_df["bb_middle"]
         df["bb_lower"] = bb_df["bb_lower"]
         df["bb_width"] = bb_df["bb_width"]
+
+        st_df = self.calculate_supertrend(df, period=10, multiplier=3.0)
+        df["supertrend"] = st_df["supertrend"]
+        df["supertrend_dir"] = st_df["supertrend_dir"]
+        df["vwap"] = self.calculate_vwap(df)
+        kc_df = self.calculate_keltner_channel(df)
+        df["kc_upper"] = kc_df["kc_upper"]
+        df["kc_middle"] = kc_df["kc_middle"]
+        df["kc_lower"] = kc_df["kc_lower"]
 
         return df
 

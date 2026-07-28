@@ -222,9 +222,11 @@ def _estado_riesgo(db, user_id, capital):
 
 
 def _registrar_senal(db, user_id, symbol, senal, ejecutado, motivo_no):
-    from models import SignalLog
-
+    # El registro de senales es opcional: si falla (tabla ausente, etc.)
+    # NUNCA debe tumbar el ciclo de trading. Por eso el import va dentro
+    # del try y cualquier error se traga con un warning.
     try:
+        from models import SignalLog
         db.add(SignalLog(
             user_id=user_id,
             symbol=symbol,
