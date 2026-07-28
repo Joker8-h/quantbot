@@ -1,15 +1,15 @@
 """Servicio de integracion con Binance via ccxt.
 
 Responsabilidades:
-  - Obtener precio en vivo (spot) para el dashboard.
+  - Obtener precio y velas en vivo (spot) para el dashboard y la estrategia.
   - Validar que un par de API key/secret funciona y tiene permisos de
-    lectura + spot trading, PERO NO de retiro (seguridad de Vill).
-  - Ejecutar ordenes de COMPRA en modo paper (simulado, sin dinero real)
-    o, si el usuario lo habilita explicitamente, orden real de mercado.
+    lectura + spot trading, PERO NO de retiro (seguridad).
+  - Ejecutar ordenes de mercado REALES (comprar_verificado/vender_verificado)
+    devolviendo el precio de llenado verdadero de Binance.
 
-Principio de Vill: el sistema nunca retira fondos, nunca apuesta todo, y
-en pruebas solo opera en paper. El riesgo se controla por monto, no por
-intentar adivinar el mercado.
+No hay modo simulado: el sistema opera siempre en real, nunca retira
+fondos y controla el riesgo por monto y por stop loss, no por adivinar
+el mercado.
 """
 import os
 import sys
@@ -280,105 +280,7 @@ class BinanceService:
             logger.error(f"[VENTA_FAIL] {symbol} {cantidad}: {e}")
             return {"ok": False, "error": str(e)}
 
-    # ------------------------------------------------------------------ #
-    # Ejecucion de ordenes
-    # ------------------------------------------------------------------ #
-    def ejecutar_compra(self, symbol: str, monto_usd: float, paper: bool = True) -> dict:
-        """Compra en spot.
-
-        - Si el servicio esta en TESTNET: envia la orden al Spot Testnet de
-          Binance (dinero FICTICIO, ejercita todo el flujo real del codigo).
-        - paper=True (sin testnet): NO envia orden; simulacion local.
-        - paper=False (sin testnet): envia orden de mercado REAL (dinero real).
-        """
-        precio = self.precio(symbol)
-        if not precio:
-            return {"ok": False, "error": "No se pudo obtener precio"}
-        cantidad = round(monto_usd / precio, 8)
-
-        if self.testnet:
-            try:
-                orden = self.exchange.create_market_buy_order(symbol, cantidad)
-                return {
-                    "ok": True,
-                    "testnet": True,
-                    "paper": True,
-                    "symbol": symbol,
-                    "orden_id": orden.get("id"),
-                    "monto_usd": monto_usd,
-                    "precio": precio,
-                    "cantidad": cantidad,
-                    "mensaje": "Orden enviada al TESTNET de Binance (dinero ficticio)",
-                }
-            except Exception as e:
-                return {"ok": False, "testnet": True, "error": str(e)}
-
-        if paper:
-            return {
-                "ok": True,
-                "paper": True,
-                "symbol": symbol,
-                "monto_usd": monto_usd,
-                "precio": precio,
-                "cantidad": cantidad,
-                "mensaje": "ORDEN SIMULADA (paper) - no se movio dinero real",
-            }
-
-        try:
-            orden = self.exchange.create_market_buy_order(symbol, cantidad)
-            return {
-                "ok": True,
-                "paper": False,
-                "symbol": symbol,
-                "orden_id": orden.get("id"),
-                "cantidad": cantidad,
-                "precio": precio,
-                "mensaje": "Orden de mercado REAL enviada",
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    def ejecutar_venta(self, symbol: str, cantidad: float, paper: bool = True) -> dict:
-        """Venta en spot. Mismas reglas que ejecutar_compra."""
-        precio = self.precio(symbol)
-        cantidad = round(float(cantidad), 8)
-
-        if self.testnet:
-            try:
-                orden = self.exchange.create_market_sell_order(symbol, cantidad)
-                return {
-                    "ok": True,
-                    "testnet": True,
-                    "paper": True,
-                    "symbol": symbol,
-                    "orden_id": orden.get("id"),
-                    "precio": precio,
-                    "cantidad": cantidad,
-                    "mensaje": "Venta enviada al TESTNET de Binance (dinero ficticio)",
-                }
-            except Exception as e:
-                return {"ok": False, "testnet": True, "error": str(e)}
-
-        if paper:
-            return {
-                "ok": True,
-                "paper": True,
-                "symbol": symbol,
-                "precio": precio,
-                "cantidad": cantidad,
-                "mensaje": "VENTA SIMULADA (paper) - no se movio dinero real",
-            }
-
-        try:
-            orden = self.exchange.create_market_sell_order(symbol, cantidad)
-            return {
-                "ok": True,
-                "paper": False,
-                "symbol": symbol,
-                "orden_id": orden.get("id"),
-                "precio": precio,
-                "cantidad": cantidad,
-                "mensaje": "Orden de venta REAL enviada",
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+# NOTA: los metodos antiguos ejecutar_compra(paper=...) / ejecutar_venta(paper=...)
+# se eliminaron. Toda ejecucion pasa ahora por comprar_verificado() y
+# vender_verificado(), que operan SIEMPRE en real y devuelven el fill
+# verdadero de Binance. No queda ninguna ruta de simulacion.

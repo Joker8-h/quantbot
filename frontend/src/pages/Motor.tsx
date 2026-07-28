@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
+import LiveChart from '../components/LiveChart';
 
 interface PosicionAbierta {
   symbol: string;
@@ -136,6 +137,9 @@ export default function Motor() {
           No tienes una cuenta REAL conectada. Ve a <b>Cuenta → Conexión con Binance</b> y pega tus llaves.
         </div>
       )}
+
+      {/* Velas en vivo del mercado real */}
+      <LiveChart />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">

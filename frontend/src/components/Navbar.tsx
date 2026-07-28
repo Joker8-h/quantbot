@@ -5,7 +5,6 @@ import { getCurrency, setCurrency } from '../currency';
 const navItems = [
   { path: '/inversion', label: 'Inversión', icon: '📊' },
   { path: '/motor', label: 'Motor', icon: '💵' },
-  { path: '/modos', label: 'Modos', icon: '🎚️' },
   { path: '/', label: 'Inicio', icon: '🏠' },
   { path: '/ganancias', label: 'Ganancias', icon: '💰' },
   { path: '/sistema', label: 'Sistema', icon: '⚙️' },
