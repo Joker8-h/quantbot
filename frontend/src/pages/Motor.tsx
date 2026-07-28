@@ -29,8 +29,8 @@ interface Estado {
   is_running: boolean;
   live_trading_enabled_env: boolean;
   estrategia: string;
-  min_score_confluencia: number;
-  riesgo_por_trade_pct: number;
+  timeframe: string;
+  symbols: string[];
   max_trades_dia: number;
   last_trade_time: string | null;
   total_pnl_usd: number;
@@ -209,9 +209,8 @@ export default function Motor() {
         </div>
         {msg && <div className="text-sm text-emerald-400">{msg}</div>}
         <div className="text-xs text-slate-500">
-          Estrategia: {estado?.estrategia} · Confluencia mínima: {estado?.min_score_confluencia}/6 ·
-          Riesgo/operación: {((estado?.riesgo_por_trade_pct ?? 0) * 100).toFixed(1)}% ·
-          Máx {estado?.max_trades_dia} ops/día
+          Estrategia: SuperTrend en marco {estado?.timeframe} · Monedas: {estado?.symbols?.join(', ')} ·
+          Mantiene la moneda mientras la tendencia diaria sea alcista, vende a USDT cuando gira bajista.
         </div>
       </div>
 

@@ -41,7 +41,7 @@ def _get_estado(db, user_id):
 
 @router.get("/status")
 def estado(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    from services.live_engine import ESTRATEGIA, MIN_SCORE, RIESGO_POR_TRADE, MAX_TRADES_DIA, _live
+    from services.live_engine import ESTRATEGIA, TIMEFRAME, SYMBOLS, MAX_TRADES_DIA, _live
 
     conn = _conn_real(db, user.id)
     st = _get_estado(db, user.id)
@@ -63,8 +63,8 @@ def estado(user: User = Depends(get_current_user), db: Session = Depends(get_db)
         "is_running": bool(st.is_running),
         "live_trading_enabled_env": _live(),
         "estrategia": ESTRATEGIA,
-        "min_score_confluencia": MIN_SCORE,
-        "riesgo_por_trade_pct": RIESGO_POR_TRADE,
+        "timeframe": TIMEFRAME,
+        "symbols": SYMBOLS,
         "max_trades_dia": MAX_TRADES_DIA,
         "last_trade_time": st.last_trade_time.isoformat() if st.last_trade_time else None,
         "total_pnl_usd": round(st.total_pnl_usd or 0.0, 4),
