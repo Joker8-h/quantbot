@@ -89,6 +89,21 @@ COOLDOWN_HORAS = _f("TRADE_COOLDOWN_HORAS", 0)
 
 USAR_GROQ = _bool("TRADE_USAR_GROQ", False)
 
+# --- Trailing stop ---
+# Se activa cuando la ganancia supera TRAILING_ACTIVAR_PCT y cierra si el precio
+# cae TRAILING_DISTANCIA_PCT desde el maximo registrado. Protege ganancias sin
+# necesitar esperar a que el SuperTrend gire (que puede ser lento en volatilidad alta).
+TRAILING_ACTIVAR_PCT = _f("TRADE_TRAILING_ACTIVAR_PCT", 0.08)    # +8% para activar
+TRAILING_DISTANCIA_PCT = _f("TRADE_TRAILING_DISTANCIA_PCT", 0.05) # trail a 5% del pico
+
+# --- Filtros de calidad de entrada ---
+# Doble confirmacion: solo entrar si el SuperTrend SEMANAL tambien es alcista.
+# Filtra rebotes contra-tendencia en marcos menores (mejora precision sin eliminar
+# las grandes tendencias que son el unico escenario donde la estrategia gana).
+FILTRO_SEMANAL = _bool("TRADE_FILTRO_SEMANAL", True)
+# Para altcoins: no entrar si BTC diario esta bajista (el mercado lidera las caidas).
+FILTRO_BTC = _bool("TRADE_FILTRO_BTC", True)
+
 ESTRATEGIA = "supertrend_diario"
 
 
@@ -105,11 +120,14 @@ def _aware(dt):
 # --------------------------------------------------------------------- #
 # Senal: confluencia de indicadores sobre velas reales de mainnet
 # --------------------------------------------------------------------- #
-def _cargar_velas(symbol: str) -> pd.DataFrame:
+def _cargar_velas(symbol: str, tf=None, n=None) -> pd.DataFrame:
     from services.binance import BinanceService
 
-    raw = BinanceService.velas_publicas(symbol, TIMEFRAME, VELAS)
-    if not raw or len(raw) < 210:
+    timeframe = tf or TIMEFRAME
+    limite = n or VELAS
+    raw = BinanceService.velas_publicas(symbol, timeframe, limite)
+    min_velas = max(ST_PERIODO + 5, 30)
+    if not raw or len(raw) < min_velas:
         return pd.DataFrame()
 
     df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -122,6 +140,23 @@ def _supertrend_dir(df: pd.DataFrame) -> pd.Series:
     from indicators import Indicators
     st = Indicators().calculate_supertrend(df, period=ST_PERIODO, multiplier=ST_MULT)
     return st["supertrend_dir"], st["supertrend"]
+
+
+def _btc_alcista() -> bool:
+    """True si el SuperTrend diario de BTC es alcista.
+
+    Falla abierto (True) para no bloquear al bot si Binance no responde.
+    Se llama solo cuando FILTRO_BTC=True y el simbolo no es BTC/USDT.
+    """
+    try:
+        df = _cargar_velas("BTC/USDT")
+        if df.empty or len(df) < (ST_PERIODO + 5):
+            return True
+        dir_series, _ = _supertrend_dir(df)
+        return int(dir_series.iloc[-1] if pd.notna(dir_series.iloc[-1]) else 1) == 1
+    except Exception as e:
+        logger.warning(f"[filtro_btc] no se pudo verificar: {e}")
+        return True
 
 
 def _evaluar_senal(symbol: str) -> dict:
@@ -156,6 +191,32 @@ def _evaluar_senal(symbol: str) -> dict:
     dist_pct = (precio - linea) / precio if precio > 0 else 0.0
     razon = (f"SuperTrend diario {'ALCISTA' if alcista else 'bajista'} "
              f"(dia {dias_alcista}, precio {dist_pct:+.1%} vs linea ${linea:,.2f})")
+
+    # Filtro BTC: para altcoins, el mercado lider debe estar alcista
+    if alcista and FILTRO_BTC and symbol != "BTC/USDT":
+        if not _btc_alcista():
+            return {
+                "entrar": False, "alcista": False, "precio": precio, "score": 0,
+                "razones": [], "atr": 0.0,
+                "razon": f"filtro BTC: mercado lider bajista — diario {symbol} alcista pero BTC guia la caida",
+            }
+
+    # Filtro semanal: doble confirmacion, evita entradas contra-tendencia semanal
+    if alcista and FILTRO_SEMANAL:
+        try:
+            df_w = _cargar_velas(symbol, "1w", 200)
+            if not df_w.empty and len(df_w) >= (ST_PERIODO + 5):
+                dir_w, _ = _supertrend_dir(df_w)
+                st_w = int(dir_w.iloc[-1] if pd.notna(dir_w.iloc[-1]) else -1)
+                if st_w != 1:
+                    return {
+                        "entrar": False, "alcista": False, "precio": precio, "score": 0,
+                        "razones": [], "atr": 0.0,
+                        "razon": (f"filtro semanal: SuperTrend 1W bajista "
+                                  f"(diario alcista dia {dias_alcista} pero sin confirmacion semanal)"),
+                    }
+        except Exception as e:
+            logger.warning(f"[filtro_semanal] {symbol}: {e}")  # falla abierto
 
     return {
         "entrar": alcista,
@@ -263,9 +324,21 @@ def _gestionar_abierta(db, svc, trade) -> dict:
     if senal.get("supertrend"):
         trade.stop_loss = float(senal["supertrend"])
 
+    ganancia_pct = (precio - trade.entry_price) / trade.entry_price if trade.entry_price > 0 else 0.0
+
     motivo = None
-    if senal.get("alcista") is False and "sin datos" not in senal.get("razon", ""):
+    # Cierre por senal de tendencia: solo si el SuperTrend diario EXPLICITAMENTE giro bajista.
+    # Los filtros de entrada (semanal, BTC) no se usan para gestionar posiciones ya abiertas;
+    # solo el SuperTrend diario y los stops deciden cuando salir.
+    razon_senal = senal.get("razon", "")
+    st_bajista = (senal.get("alcista") is False
+                  and "filtro" not in razon_senal  # no es un filtro de entrada
+                  and "sin datos" not in razon_senal)
+    if st_bajista:
         motivo = "supertrend_bajista"
+    elif (TRAILING_ACTIVAR_PCT > 0 and ganancia_pct >= TRAILING_ACTIVAR_PCT
+          and precio <= (trade.max_price or trade.entry_price) * (1 - TRAILING_DISTANCIA_PCT)):
+        motivo = "trailing_stop"
     elif STOP_CATASTROFICO_PCT > 0 and precio <= trade.entry_price * (1 - STOP_CATASTROFICO_PCT):
         motivo = "stop_catastrofico"
 
@@ -340,8 +413,12 @@ def _abrir(db, svc, user_id, symbol, senal, capital, usdt_libre) -> dict:
     db.add(trade)
     db.commit()
 
-    logger.info(f"[APERTURA_REAL] {symbol} @ {precio_entrada} | ${compra['notional_usd']:.2f} | "
-                f"SuperTrend diario alcista (dia {senal.get('dias_alcista')})")
+    logger.info(
+        f"[APERTURA_REAL] {symbol} @ {precio_entrada} | ${compra['notional_usd']:.2f} | "
+        f"ST diario alcista dia {senal.get('dias_alcista')} | "
+        f"filtros: semanal={'on' if FILTRO_SEMANAL else 'off'} btc={'on' if FILTRO_BTC else 'off'} "
+        f"trail={TRAILING_ACTIVAR_PCT:.0%}→{TRAILING_DISTANCIA_PCT:.0%}"
+    )
     return {"symbol": symbol, "accion": "abierta", "precio": precio_entrada,
             "notional": compra["notional_usd"], "supertrend": linea_st,
             "dias_alcista": senal.get("dias_alcista"), "razon": senal["razon"]}

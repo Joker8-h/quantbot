@@ -116,38 +116,43 @@ class Indicators:
             return pd.DataFrame({"supertrend": supertrend, "supertrend_dir": direction}, index=df.index)
             
         supertrend.iloc[0] = upper_band.iloc[0]
-        direction.iloc[0] = -1
+        direction.iloc[0] = 1
+        
+        upper_arr = upper_band.values.copy()
+        lower_arr = lower_band.values.copy()
+        close_arr = df["close"].values
+        st_arr = np.zeros(len(df))
+        dir_arr = np.ones(len(df), dtype=int)
         
         for i in range(1, len(df)):
-            close = df["close"].iloc[i]
-            close_prev = df["close"].iloc[i-1]
-            
-            ub_curr = upper_band.iloc[i]
-            ub_prev = upper_band.iloc[i-1]
-            final_upper = ub_curr if ub_curr < ub_prev or close_prev < ub_prev else ub_prev
-            
-            lb_curr = lower_band.iloc[i]
-            lb_prev = lower_band.iloc[i-1]
-            final_lower = lb_curr if lb_curr > lb_prev or close_prev > lb_prev else lb_prev
-            
-            if direction.iloc[i-1] == -1:
-                if close > final_upper:
-                    direction.iloc[i] = 1
-                    supertrend.iloc[i] = final_lower
-                else:
-                    direction.iloc[i] = -1
-                    supertrend.iloc[i] = final_upper
+            if lower_arr[i] > lower_arr[i-1] or close_arr[i-1] < lower_arr[i-1]:
+                pass
             else:
-                if close < final_lower:
-                    direction.iloc[i] = -1
-                    supertrend.iloc[i] = final_upper
+                lower_arr[i] = lower_arr[i-1]
+                
+            if upper_arr[i] < upper_arr[i-1] or close_arr[i-1] > upper_arr[i-1]:
+                pass
+            else:
+                upper_arr[i] = upper_arr[i-1]
+                
+            if dir_arr[i-1] == 1:
+                if close_arr[i] < lower_arr[i]:
+                    dir_arr[i] = -1
+                    st_arr[i] = upper_arr[i]
                 else:
-                    direction.iloc[i] = 1
-                    supertrend.iloc[i] = final_lower
+                    dir_arr[i] = 1
+                    st_arr[i] = lower_arr[i]
+            else:
+                if close_arr[i] > upper_arr[i]:
+                    dir_arr[i] = 1
+                    st_arr[i] = lower_arr[i]
+                else:
+                    dir_arr[i] = -1
+                    st_arr[i] = upper_arr[i]
         
         return pd.DataFrame({
-            "supertrend": supertrend,
-            "supertrend_dir": direction,
+            "supertrend": st_arr,
+            "supertrend_dir": dir_arr,
         }, index=df.index)
 
     def calculate_vwap(self, df: pd.DataFrame) -> pd.Series:

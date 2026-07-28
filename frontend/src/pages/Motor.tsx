@@ -210,7 +210,8 @@ export default function Motor() {
         {msg && <div className="text-sm text-emerald-400">{msg}</div>}
         <div className="text-xs text-slate-500">
           Estrategia: SuperTrend en marco {estado?.timeframe} · Monedas: {estado?.symbols?.join(', ')} ·
-          Mantiene la moneda mientras la tendencia diaria sea alcista, vende a USDT cuando gira bajista.
+          Entra solo si el SuperTrend diario Y semanal son alcistas (doble confirmación) · BTC debe liderar al alza ·
+          Cierra cuando el SuperTrend gira bajista, trailing stop activo desde +8% de ganancia, o stop catastrófico −18%.
         </div>
       </div>
 
