@@ -69,19 +69,40 @@ class BinanceService:
     # ------------------------------------------------------------------ #
     # Sin credenciales: solo lectura publica (precio en vivo)
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _rest_publico(path: str, timeout: int = 10):
+        """GET directo al endpoint publico de SPOT (api.binance.com).
+
+        Evita ccxt.load_markets(), que golpea fapi/dapi (futuros), a veces
+        geo-bloqueados. Este es el feed que alimenta TODAS las decisiones del
+        bot, asi que debe ser lo mas robusto posible.
+        """
+        import urllib.request
+        import json
+        url = f"https://api.binance.com{path}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        proxy = os.getenv("BINANCE_HTTP_PROXY", "").strip()
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+        ) if proxy else urllib.request.build_opener()
+        with opener.open(req, timeout=timeout) as r:
+            return json.loads(r.read())
+
     @classmethod
     def precio_publico(cls, symbol: str = "BTC/USDT") -> Optional[float]:
-        """Precio actual sin API key (datos publicos de Binance)."""
-        ex = ccxt.binance({
-            "enableRateLimit": True,
-            "timeout": 5000,
-            "options": {"defaultType": "spot"},
-            **_proxies(),
-        })
+        """Precio actual sin API key (datos publicos de Binance). REST directo."""
+        bin_sym = symbol.replace("/", "")
         try:
-            ticker = ex.fetch_ticker(symbol)
-            return float(ticker["last"])
-        except Exception as e:
+            data = cls._rest_publico(f"/api/v3/ticker/price?symbol={bin_sym}", timeout=6)
+            return float(data["price"])
+        except Exception:
+            pass
+        # Respaldo: ccxt
+        try:
+            ex = ccxt.binance({"enableRateLimit": True, "timeout": 6000,
+                               "options": {"defaultType": "spot"}, **_proxies()})
+            return float(ex.fetch_ticker(symbol)["last"])
+        except Exception:
             return None
 
     # ------------------------------------------------------------------ #
@@ -171,22 +192,28 @@ class BinanceService:
     @classmethod
     def velas_publicas(cls, symbol: str = "BTC/USDT", timeframe: str = "15m",
                        limite: int = 300) -> list:
-        """Velas OHLCV del mercado REAL, para calcular la senal.
+        """Velas OHLCV del mercado REAL de SPOT, para calcular la senal.
 
-        Aunque la orden se ejecute en una cuenta con poca liquidez, la senal
-        SIEMPRE se calcula sobre datos de mainnet: es lo unico representativo
-        del mercado real.
+        REST directo a api.binance.com (robusto ante el geo-bloqueo de futuros),
+        con ccxt como respaldo. Devuelve [[ts,o,h,l,c,v], ...].
         """
-        ex = ccxt.binance({
-            "enableRateLimit": True,
-            "timeout": 10000,
-            "options": {"defaultType": "spot"},
-            **_proxies(),
-        })
+        bin_sym = symbol.replace("/", "")
         try:
+            data = cls._rest_publico(
+                f"/api/v3/klines?symbol={bin_sym}&interval={timeframe}&limit={int(limite)}",
+                timeout=12,
+            )
+            return [[k[0], float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])]
+                    for k in data]
+        except Exception as e:
+            logger.warning(f"[OHLCV_REST_FAIL] {symbol} {timeframe}: {str(e)[:80]}")
+        # Respaldo: ccxt
+        try:
+            ex = ccxt.binance({"enableRateLimit": True, "timeout": 12000,
+                               "options": {"defaultType": "spot"}, **_proxies()})
             return ex.fetch_ohlcv(symbol, timeframe=timeframe, limit=limite)
         except Exception as e:
-            logger.warning(f"[OHLCV_FAIL] {symbol} {timeframe}: {e}")
+            logger.warning(f"[OHLCV_FAIL] {symbol} {timeframe}: {str(e)[:80]}")
             return []
 
     # ------------------------------------------------------------------ #

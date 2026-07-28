@@ -122,6 +122,15 @@ def _iniciar_scheduler():
         sch.start()
         _scheduler = sch
         logger.info(f"[scheduler] activo (tick={tick_min}min, reporte={rep_hora:02d}:{rep_min:02d} UTC)")
+        try:
+            from services.live_engine import ESTRATEGIA, TIMEFRAME, SYMBOLS, _live
+            logger.info(
+                f"[motor] estrategia={ESTRATEGIA} marco={TIMEFRAME} "
+                f"monedas={','.join(SYMBOLS)} | LIVE_TRADING_ENABLED={_live()} "
+                f"(si es False, evalua senales pero NO envia ordenes)"
+            )
+        except Exception as e:
+            logger.warning(f"[motor] no se pudo leer config: {e}")
     except Exception as e:
         logger.error(f"[scheduler] no se pudo iniciar: {e}")
 
