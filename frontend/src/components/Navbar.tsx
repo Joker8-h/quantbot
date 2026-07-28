@@ -3,7 +3,6 @@ import { useAuth } from '../AuthContext';
 import { getCurrency, setCurrency } from '../currency';
 
 const navItems = [
-  { path: '/inversion', label: 'Inversión', icon: '📊' },
   { path: '/motor', label: 'Motor', icon: '💵' },
   { path: '/', label: 'Inicio', icon: '🏠' },
   { path: '/ganancias', label: 'Ganancias', icon: '💰' },

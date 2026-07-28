@@ -4,13 +4,11 @@ import { AuthProvider, useAuth } from './AuthContext';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Inicio from './pages/Inicio';
-import Inversion from './pages/Inversion';
 import Ganancias from './pages/Ganancias';
 import Sistema from './pages/Sistema';
 import Cuenta from './pages/Cuenta';
 import Alertas from './pages/Alertas';
 import Admin from './pages/Admin';
-import Modos from './pages/Modos';
 import Motor from './pages/Motor';
 import { fetchRate } from './currency';
 
@@ -31,12 +29,10 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
-      <Route path="/inversion" element={<ProtectedRoute><Inversion /></ProtectedRoute>} />
       <Route path="/" element={<ProtectedRoute><Inicio /></ProtectedRoute>} />
       <Route path="/ganancias" element={<ProtectedRoute><Ganancias /></ProtectedRoute>} />
       <Route path="/sistema" element={<ProtectedRoute><Sistema /></ProtectedRoute>} />
       <Route path="/cuenta" element={<ProtectedRoute><Cuenta /></ProtectedRoute>} />
-      <Route path="/modos" element={<ProtectedRoute><Modos /></ProtectedRoute>} />
       <Route path="/motor" element={<ProtectedRoute><Motor /></ProtectedRoute>} />
       <Route path="/alertas" element={<ProtectedRoute><Alertas /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
